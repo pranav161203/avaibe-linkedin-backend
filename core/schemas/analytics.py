@@ -15,6 +15,6 @@ class SimilarIn(BaseModel):
 
 class DecisionIn(BaseModel):
     account_id: int
-    key: str = Field(min_length=1, max_length=120, pattern=r"^(rule:[\w-]+|ai:\d+:\d+)$")
+    key: str = Field(min_length=1, max_length=120, pattern=r"^(rule:[\w-]+|ai:\d+:\d+|trend:\d+:\d+)$")
     # None clears the decision (Undo)
-    status: str | None = Field(default=None, pattern=r"^(doing|later|dismissed|done)$")
+    status: str | None = Field(default=None, pattern=r"^(later|dismissed|done)$")

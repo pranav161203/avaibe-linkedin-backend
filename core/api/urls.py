@@ -58,6 +58,7 @@ urlpatterns = [
     path("analytics/due-snapshots", analytics.due_snapshots),
     # Claude
     path("ai/ideas", ai.ideas),
+    path("ai/trends", ai.brand_trends),
     path("ai/post-assist", ai.post_assist),
     path("ai/compare-posts", ai.compare_posts),
     path("ai/post-chat", ai.post_chat),

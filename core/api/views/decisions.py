@@ -1,4 +1,4 @@
-"""The team's shared decisions on suggestions and Claude ideas: Do it / Later / Dismiss / Done."""
+"""The team's shared decisions on suggestions and Claude ideas: Done / Later / Dismiss."""
 
 from datetime import timedelta
 

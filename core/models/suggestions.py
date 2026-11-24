@@ -8,11 +8,12 @@ from core.models.accounts import Account
 class SuggestionDecision(models.Model):
     """The team's decision on one suggestion or Claude idea, shared by everyone on the account.
 
-    key: "rule:<suggestion id>" for data-driven suggestions, "ai:<run id>:<index>" for Claude ideas.
-    status: doing (Do it) | later (snoozed until `until`) | dismissed | done.
+    key: "rule:<suggestion id>" for data-driven suggestions, "ai:<run id>:<index>" for Claude ideas,
+    "trend:<run id>:<index>" for brand trend ideas.
+    status: later (snoozed until `until`) | dismissed | done.
     """
 
-    STATUSES = ("doing", "later", "dismissed", "done")
+    STATUSES = ("later", "dismissed", "done")
 
     account = models.ForeignKey(Account, on_delete=models.CASCADE, related_name="suggestion_decisions")
     key = models.CharField(max_length=120)

@@ -8,6 +8,10 @@ from pydantic import BaseModel, Field
 from core.services.ai import chat as ai_chat
 
 
+class TrendsIn(BaseModel):
+    account_id: int
+
+
 class GenerateIn(BaseModel):
     account_id: int
     focus: str | None = Field(default=None, max_length=300)

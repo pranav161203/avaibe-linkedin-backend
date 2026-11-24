@@ -93,7 +93,8 @@ class SuggestionDecisionTests(TestCase):
         from core.models import SuggestionDecision
 
         with mock.patch("core.auth.authentication.auth_enabled", return_value=False):
-            self.assertEqual(self._put("rule:tag-imported", "doing").status_code, 200)
+            self.assertEqual(self._put("rule:tag-imported", "doing").status_code, 422)  # no "In progress" any more
+            self.assertEqual(self._put("rule:tag-imported", "later").status_code, 200)
             self.assertEqual(self._put("rule:tag-imported", "done").json()["status"], "done")  # same row updated
             self.assertEqual(SuggestionDecision.objects.count(), 1)
             self.assertEqual(self._put("ai:1:2", "later").status_code, 200)

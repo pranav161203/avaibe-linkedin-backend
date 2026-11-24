@@ -11,11 +11,12 @@ from core.auth.permissions import check_account, require
 from core.common.timeutil import as_utc
 from core.integrations import claude
 from core.models import Account, AIRun, PlannedPost
-from core.schemas.ai import ComparePostsIn, GenerateIn, PostAssistIn, PostChatIn
+from core.schemas.ai import ComparePostsIn, GenerateIn, PostAssistIn, PostChatIn, TrendsIn
 from core.services.ai import chat as ai_chat
 from core.services.ai import compare as ai_compare
 from core.services.ai import ideas as ai_ideas
 from core.services.ai import post_assist as ai_assist
+from core.services.ai import trends as ai_trends
 
 
 def _run_out(r: AIRun) -> dict:
@@ -59,6 +60,36 @@ def ideas(request):
     focus = (body.focus or "").strip() or None
     try:
         run = ai_ideas.generate_ideas(account, focus, None if user.dev else user.email)
+    except claude.AIError as e:
+        fail(400, str(e))
+    return Response(_run_out(run), status=201)
+
+
+@api_view(["GET", "POST"])
+def brand_trends(request):
+    """Brand trends from the web (Claude + web search): read the latest run, or start a new one."""
+    user = request.user
+    if request.method == "GET":
+        account_id = int_param(request, "account_id", required=True)
+        check_account(user, account_id)
+        latest = AIRun.objects.filter(account_id=account_id, kind="trends", status="ok").first()
+        acc = Account(id=account_id)
+        return Response({
+            "configured": claude.configured(),
+            "latest": _run_out(latest) if latest else None,
+            "runs_today": ai_trends.runs_today(acc),
+            "running": ai_trends.running(acc) is not None,
+            "daily_limit": ai_trends.DAILY_LIMIT,
+        })
+
+    require(user, "editor")  # costs money: editors and above
+    body = parse(TrendsIn, request.data)
+    account = Account.objects.filter(id=body.account_id).first()
+    if not account:
+        fail(404, "Account not found")
+    check_account(user, account.id)
+    try:
+        run = ai_trends.find_trends(account, None if user.dev else user.email)
     except claude.AIError as e:
         fail(400, str(e))
     return Response(_run_out(run), status=201)

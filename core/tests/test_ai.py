@@ -233,3 +233,45 @@ class PostChatOpeningTests(TestCase):
         text = " ".join(b.get("text", "") for b in msgs[0]["content"])
         self.assertIn("<untrusted_message>Plan a post for GITEX week</untrusted_message>", text)
         self.assertTrue(any(b.get("cache_control") for b in msgs[0]["content"]))  # the cached opening is still first
+
+
+class BrandTrendsTests(TestCase):
+    """Brand trends: off without a key; with one, sources are kept only if the web search returned them."""
+
+    def setUp(self):
+        self.acc = Account.objects.create(name="AVAIBE", kind="company")
+        self.client = APIClient()
+
+    def test_not_configured(self):
+        with mock.patch("core.auth.authentication.auth_enabled", return_value=False), mock.patch("core.integrations.claude.configured", return_value=False):
+            state = self.client.get(f"/api/ai/trends?account_id={self.acc.id}").json()
+            self.assertEqual((state["configured"], state["latest"]), (False, None))
+            r = self.client.post("/api/ai/trends", {"account_id": self.acc.id}, format="json")
+            self.assertEqual(r.status_code, 400)
+
+    def test_run_keeps_only_real_sources(self):
+        from core.services.ai import trends
+
+        idea = {
+            "title": "E-invoicing checklist", "trend_type": "policy", "trend": "Rollout in 2026", "angle": "Checklist carousel",
+            "service": "ERP", "audiences": ["smes"], "avoid_for": None, "format": "carousel", "look": "Warm, hand-made",
+            "image_prompt": "A tidy desk with invoices", "voice": "founder", "use_by": "2026-12-31", "risks": [], "confidence": "medium",
+            "sources": [{"title": "Real", "url": "https://example.ae/real"}, {"title": "Made up", "url": "https://example.ae/fake"}],
+        }
+        result = trends.TrendsResult.model_validate({"ideas": [idea], "skipped": []})
+        with (
+            mock.patch("core.auth.authentication.auth_enabled", return_value=False),
+            mock.patch("core.integrations.claude.configured", return_value=True),
+            mock.patch("core.services.ai.trends.research_trends", return_value=("brief", [{"title": "Real", "url": "https://example.ae/real"}], 100, 50, 3)),
+            mock.patch("core.services.ai.trends.call_ideas", return_value=(result, 200, 80)),
+        ):
+            r = self.client.post("/api/ai/trends", {"account_id": self.acc.id}, format="json")
+            self.assertEqual(r.status_code, 201)
+            got = r.json()["result"]
+            self.assertEqual([s["url"] for s in got["ideas"][0]["sources"]], ["https://example.ae/real"])
+            self.assertEqual(got["searches"], 3)
+            latest = self.client.get(f"/api/ai/trends?account_id={self.acc.id}").json()["latest"]
+            self.assertEqual(latest["id"], r.json()["id"])
+            # trend ideas can be marked Done / Later / Dismiss like other suggestions
+            d = self.client.put("/api/suggestions/decisions", {"account_id": self.acc.id, "key": f"trend:{latest['id']}:0", "status": "done"}, format="json")
+            self.assertEqual(d.status_code, 200)
