@@ -35,7 +35,7 @@ This opens three windows: the Django API (port 8000), the publishing scheduler, 
    ```powershell
    cd server
    python -m venv .venv
-   .\.venv\Scripts\pip install -r requirements.txt
+   .\.venv\Scripts\pip install -r requirements-dev.txt   # runtime + lint tools
    copy .env.example .env        # then fill in DATABASE_URL, DJANGO_SECRET_KEY, LinkedIn keys…
    .\.venv\Scripts\python manage.py migrate
    ```
@@ -54,21 +54,30 @@ This opens three windows: the Django API (port 8000), the publishing scheduler, 
 | Front end (in `frontend/`) | `npm run dev` |
 | Database changes after updating models | `.\.venv\Scripts\python manage.py makemigrations` then `migrate` |
 | Admin login in local mode | `.\.venv\Scripts\python manage.py createsuperuser` |
+| Tests (SQLite, never your `.env` database) | `.\.venv\Scripts\python manage.py test` |
+| Lint (same as CI) | `.\.venv\Scripts\ruff check .` |
+uff check .` |
+| Mock LinkedIn API + demo data | `$env:MOCK_LINKEDIN="1"` before `runserver`, then `manage.py seed_demo_linkedin` |
 | Copy data from the old FastAPI database (one-off) | `.\.venv\Scripts\python manage.py import_legacy` |
 
 ## How the backend is organised (`server/`)
 
+**Read [docs/architecture.md](docs/architecture.md) before changing the backend.** It has the full layout, the layer
+rule (checked by a test) and step-by-step recipes for endpoints and models.
+
 | Path | Contents |
 |---|---|
-| `config/settings.py` | Django settings; everything environment-specific comes from `server/.env` |
-| `core/models.py` | Accounts, posts, snapshots, audience, publishing queue, LinkedIn connections, users, settings |
-| `core/views/` | API endpoints, one module per area (posts, analytics, planner, team, auth…) |
-| `core/urls.py` | API routes (`/api/...`), the same paths the React app calls |
-| `core/analytics.py`, `core/suggestions.py`, `core/segments.py` | Analysis: medians, labels, heatmap, explained suggestions, UAE/education/decision-maker segments |
-| `core/schemas.py` | Request validation (Pydantic) |
-| `core/auth.py`, `core/views/auth.py` | Microsoft sign-in, roles, account access |
-| `core/publisher.py`, `management/commands/run_scheduler.py` | Publishing to LinkedIn |
-| `core/admin.py` | Django admin panel |
+| `config/settings/` | `base.py` plus `dev.py` (manage.py default), `prod.py` (gunicorn/Docker/Render), `test.py`; values come from the environment / `.env` |
+| `core/api/` | HTTP layer: routes (`urls.py`, the paths the React app calls) and thin views, one module per area |
+| `core/auth/` | Session sign-in (Microsoft Entra ID), roles, account access |
+| `core/models/` | Database models, one module per area (accounts, posts, publishing, users, ai, leads...) |
+| `core/schemas/` | Request validation (Pydantic) |
+| `core/services/` | Business logic: analytics, Claude features, imports, publishing, LinkedIn sync, calendar |
+| `core/integrations/` | External APIs: Claude (Anthropic SDK) and LinkedIn (member OAuth/posting, Community Management API) |
+| `core/common/` | Time zones, token encryption, request-ID middleware |
+| `core/tests/` | Tests, one module per area |
+| `dev_tools/` | Development only: mock LinkedIn API and demo-data commands (never installed in production) |
+| `Dockerfile`, `render.yaml`, `.github/workflows/ci.yml` | Container image, Render deployment, CI (lint, checks, migrations, tests) |
 
 ## What it does
 

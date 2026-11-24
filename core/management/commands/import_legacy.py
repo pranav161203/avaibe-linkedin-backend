@@ -7,6 +7,7 @@ Reads LEGACY_DATABASE_URL (server/.env). The old database is only read, never ch
 IDs are kept so links between records stay valid. Uploaded images are copied from backend/uploads.
 """
 
+import os
 import shutil
 
 import psycopg
@@ -15,8 +16,7 @@ from django.core.management.color import no_style
 from django.db import connection, transaction
 from psycopg.rows import dict_row
 
-from core import settings_store
-from core.appconf import BASE_DIR, UPLOAD_DIR
+from core.conf import BASE_DIR, UPLOAD_DIR
 from core.models import (
     Account,
     AppSetting,
@@ -28,8 +28,7 @@ from core.models import (
     Snapshot,
     User,
 )
-
-import os
+from core.services import settings_store
 
 METRICS = [
     "impressions", "members_reached", "clicks", "reactions", "comments", "reposts", "video_views",

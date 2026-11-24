@@ -2,9 +2,9 @@
 
 from django.contrib import admin
 
-from .models import (
-    AIRun,
+from core.models import (
     Account,
+    AIRun,
     AppSetting,
     LinkedInConnection,
     PageAudience,

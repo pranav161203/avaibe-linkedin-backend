@@ -10,7 +10,7 @@ import time
 from django.core.management.base import BaseCommand
 from django.db import close_old_connections
 
-from core import publisher
+from core.services import publishing as publisher
 
 log = logging.getLogger("scheduler")
 

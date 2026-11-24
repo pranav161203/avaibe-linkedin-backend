@@ -42,7 +42,7 @@ The demo data is loaded through the local mock LinkedIn API, so this runs on the
 2. When asked, fill in:
    - `DATABASE_URL`: the Neon string
    - `CORS_ORIGINS`: the Vercel address from step 5 (you can add it afterwards and redeploy)
-3. Wait for "Live", then open `https://<service>.onrender.com/api/auth/me`: it should show JSON.
+3. Wait for "Live", then open `https://<service>.onrender.com/api/health`: it should show `{"status": "ok"}` (the database is reachable).
    If Render gave the service a different name than `avaibe-linkedin-demo`, change the address in
    the frontend repository's `vercel.json` to match, commit and push that repository.
 

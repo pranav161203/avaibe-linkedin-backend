@@ -10,12 +10,12 @@ services:
     buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput
     # Free plan has no pre-deploy step, so database changes are applied at start (safe to repeat)
     startCommand: python manage.py migrate --noinput && gunicorn config.wsgi --bind 0.0.0.0:$PORT --workers 2 --timeout 60
-    healthCheckPath: /api/auth/me
+    healthCheckPath: /api/health # 200 when the app can reach its database, 503 otherwise
     envVars:
       - key: PYTHON_VERSION
         value: 3.14.7
-      - key: DJANGO_DEBUG
-        value: "false"
+      - key: DJANGO_SETTINGS_MODULE # production settings: DEBUG off, fails at start-up if a secret is missing
+        value: config.settings.prod
       - key: DJANGO_SECRET_KEY
         generateValue: true
       - key: DATABASE_URL # Neon connection string (Neon → Connect → copy). Typed in Render, never committed.

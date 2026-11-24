@@ -5,7 +5,7 @@ from django.contrib import admin
 from django.http import HttpResponseRedirect
 from django.urls import include, path
 
-from core.appconf import auth_enabled
+from core.conf import auth_enabled
 
 
 def admin_login(request, extra_context=None):
@@ -23,12 +23,12 @@ admin.site.index_title = "Data and team"
 
 urlpatterns = [
     path("admin/", admin.site.urls),
-    path("api/", include("core.urls")),
+    path("api/", include("core.api.urls")),
 ]
 
-# Local stand-in for LinkedIn's API with dummy data (core/mock_linkedin). Only when MOCK_LINKEDIN=1, never in production.
+# Local stand-in for LinkedIn's API with dummy data (dev_tools/mock_linkedin). Only when MOCK_LINKEDIN=1, never in production.
 if os.environ.get("MOCK_LINKEDIN") == "1":
-    urlpatterns.append(path("mock-linkedin/", include("core.mock_linkedin.urls")))
+    urlpatterns.append(path("mock-linkedin/", include("dev_tools.mock_linkedin.urls")))
 
 if settings.DEBUG:
     # Nothing else to serve: the React app runs separately (Vite in development)
