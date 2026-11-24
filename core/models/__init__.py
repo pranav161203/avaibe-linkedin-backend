@@ -30,6 +30,7 @@ from core.models.choices import (
     ROLE_LABELS,
     ROLES,
 )
+from core.models.knowledge import KnowledgeChunk, KnowledgeSource
 from core.models.leads import Lead
 from core.models.posts import (
     REF_PREFIX,
@@ -47,7 +48,7 @@ from core.models.users import AuthFlow, User, UserManager
 __all__ = [
     "AUTO_PUBLISH_FORMATS", "CHECKPOINT_CHOICES", "CHECKPOINT_HOURS", "FORMAT_CHOICES", "FORMATS", "PAGE_DAILY_FIELDS",
     "PLANNED_FORMATS", "PLANNED_STATUSES", "REF_PREFIX", "ROLE_CHOICES", "ROLE_LABELS", "ROLES",
-    "AIRun", "Account", "AccountDoc", "AppSetting", "AuthFlow", "Counter", "Lead", "LinkedInConnection", "OAuthState",
+    "AIRun", "Account", "AccountDoc", "AppSetting", "AuthFlow", "Counter", "KnowledgeChunk", "KnowledgeSource", "Lead", "LinkedInConnection", "OAuthState",
     "PageAudience", "PageDaily", "PlannedPost", "Post", "PostAudience", "Snapshot", "SuggestionDecision", "User",
     "UserManager", "assign_missing_refs", "next_post_ref",
 ]

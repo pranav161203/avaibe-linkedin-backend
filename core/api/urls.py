@@ -12,6 +12,7 @@ from core.api.views import (
     docs,
     health,
     imports,
+    knowledge,
     leads,
     linkedin,
     page_audience,
@@ -79,6 +80,10 @@ urlpatterns = [
     path("leads", leads.leads),
     path("leads/<int:lead_id>", leads.lead_detail),
     path("leads/<int:lead_id>/replied", leads.lead_replied),
+    # Company knowledge base (shared by the workspace)
+    path("knowledge", knowledge.sources),
+    path("knowledge/search", knowledge.search),
+    path("knowledge/<int:source_id>", knowledge.source_detail),
     path("planner", planner.planned),
     path("planner/import/template", plan_import.template),
     path("planner/import", plan_import.import_plan),

@@ -14,5 +14,8 @@ anthropic>=2.8
 # Reading LinkedIn page-analytics exports: .xls (the format LinkedIn uses) and .xlsx
 xlrd>=2.0
 openpyxl>=3.1
+# Reading knowledge-base uploads: PDF and Word (.docx)
+pypdf>=6.0
+python-docx>=1.1
 # Production web server (hosting on Render)
 gunicorn>=23

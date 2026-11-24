@@ -17,7 +17,7 @@ from core.common.timeutil import now_utc, to_uae
 from core.conf import CLAUDE_MODEL
 from core.integrations import claude
 from core.models import Account, AIRun, PageAudience
-from core.services import settings_store
+from core.services import knowledge, settings_store
 from core.services.ai.context import (
     _round,
 )
@@ -146,6 +146,9 @@ def build_prompt(account: Account, focus: str | None) -> str:
         "<brand>\n" + json.dumps(brand, ensure_ascii=False, indent=1) + "\n</brand>",
         "<account_data>\n" + json.dumps(ctx, ensure_ascii=False, indent=1, default=str) + "\n</account_data>",
     ]
+    kb = knowledge.context_block(f"{focus or ''} AVAIBE services projects clients case studies", account.id, limit=6)
+    if kb:
+        parts.append(kb)
     if focus:
         parts.append(f"<focus>{focus}</focus>\nPrioritise ideas for this focus, but still keep variety.")
     parts.append(

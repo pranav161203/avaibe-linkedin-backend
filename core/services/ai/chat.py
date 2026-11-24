@@ -8,6 +8,7 @@ from core.common.timeutil import now_utc
 from core.conf import CLAUDE_MODEL
 from core.integrations import claude
 from core.models import Account, AIRun
+from core.services import knowledge
 from core.services.ai import research as web
 from core.services.ai.context import draft_block, post_context
 from core.services.ai.post_assist import attachment_block
@@ -71,6 +72,9 @@ def build_chat_messages(
     opening[-1]["cache_control"] = {"type": "ephemeral"}  # everything up to here is the same on every turn
     # Web research for THIS turn only (if the team switched web search on) goes after the cached part
     web = f"\n\n<untrusted_web_research>\n{web_brief}\n</untrusted_web_research>" if web_brief else ""
+    asked = history[-1]["content"] if history and history[-1]["role"] == "user" else ""
+    kb = knowledge.context_block(" ".join(str(draft.get(k) or "") for k in ("topic", "caption")) + " " + str(asked), account.id)
+    web += f"\n\n{kb}" if kb else ""
     if not history:
         # First turn: the draft rides along after the cached part
         return [{"role": "user", "content": [*opening, {"type": "text", "text": draft_block(draft) + web}]}]

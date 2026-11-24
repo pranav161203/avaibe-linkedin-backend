@@ -12,6 +12,7 @@ from core.common.timeutil import now_utc
 from core.conf import CLAUDE_MODEL
 from core.integrations import claude
 from core.models import Account, AIRun
+from core.services import knowledge
 from core.services.ai.context import (
     POST_PARTS,
     VISUAL_NAME,
@@ -111,6 +112,9 @@ def build_post_prompt(account: Account, draft: dict, instructions: str | None, f
     focus = [f for f in (focus or ["text"]) if f in POST_PARTS]
     fmt = draft.get("format")
     parts = [post_context(account), draft_block(draft)]
+    kb = knowledge.context_block(" ".join(str(draft.get(k) or "") for k in ("topic", "industry", "caption")) + " " + (instructions or ""), account.id)
+    if kb:
+        parts.append(kb)
     if details_block(draft):
         parts.append(details_block(draft))
     if instructions:

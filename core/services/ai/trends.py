@@ -20,6 +20,7 @@ from core.common.timeutil import now_utc, to_uae
 from core.conf import CLAUDE_MODEL
 from core.integrations import claude
 from core.models import Account, AIRun
+from core.services import knowledge
 from core.services.ai.ideas import RUNNING_STALE, build_context
 from core.services.ai.research import PRICE_PER_SEARCH
 
@@ -158,7 +159,8 @@ def build_ideas_prompt(account: Account, brief: str, sources: list[dict]) -> str
         f"<untrusted_web_research>\n{brief}\n</untrusted_web_research>\n\n"
         f"<untrusted_sources>\n{src}\n</untrusted_sources>\n\n"
         f"The account's own LinkedIn numbers (for evidence only):\n<untrusted_account_data>{data}</untrusted_account_data>\n\n"
-        f"Today is {to_uae(now_utc()):%Y-%m-%d} (UAE). Give 3-6 brand ideas for {account.name}."
+        + (knowledge.context_block("AVAIBE services projects clients case studies", account.id, limit=6) + "\n\n")
+        + f"Today is {to_uae(now_utc()):%Y-%m-%d} (UAE). Give 3-6 brand ideas for {account.name}."
     )
 
 
