@@ -34,6 +34,24 @@ class SignupIn(BaseModel):
     password: str = Field(min_length=1, max_length=256)
 
 
+class PasswordResetRequestIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    email: str = Field(min_length=3, max_length=320)
+
+    @field_validator("email")
+    @classmethod
+    def _email(cls, v: str) -> str:
+        return _clean_email(v)
+
+
+class PasswordResetIn(BaseModel):
+    """Choosing a new password from a reset link."""
+
+    model_config = ConfigDict(extra="forbid")
+    token: str = Field(min_length=10, max_length=200)
+    password: str = Field(min_length=1, max_length=256)
+
+
 class PasswordChangeIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     current: str = Field(default="", max_length=256)  # empty when the account has no password yet (Microsoft only)

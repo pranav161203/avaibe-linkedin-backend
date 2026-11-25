@@ -5,7 +5,8 @@
 - signin.py       email + password sign-in with a lock after repeated failures
 - sessions.py     a person's signed-in devices: list, sign one or all others out
 - invitations.py  invite-only sign-up links
-- emails.py       sending invitation links by email (SMTP, when configured)
+- emails.py       sending invitation and password reset links by email (SMTP, when configured)
+- resets.py       forgotten passwords: single-use reset links
 - companies.py    creating and changing companies
 - audit.py        filling created_by / updated_by
 

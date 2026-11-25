@@ -175,6 +175,8 @@ LOGGING = {
 
 # Outgoing email (invitations), over SMTP: Microsoft 365, Google Workspace or any provider. Off until EMAIL_HOST
 # and DEFAULT_FROM_EMAIL are set; until then the app shows the invitation link to copy instead.
+# Development: django.core.mail.backends.console.EmailBackend prints emails to the server log instead of sending
+EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend")
 EMAIL_HOST = os.getenv("EMAIL_HOST", "")
 EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
 EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")

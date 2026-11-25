@@ -17,7 +17,7 @@ from core.models.accounts import (
     PageDaily,
 )
 from core.models.ai import AIRun
-from core.models.auth_tokens import AuthFlow, AuthSession, Invitation, LoginAttempt, RefreshToken
+from core.models.auth_tokens import AuthFlow, AuthSession, Invitation, LoginAttempt, PasswordReset, RefreshToken
 from core.models.choices import (
     AUTO_PUBLISH_FORMATS,
     CHECKPOINT_CHOICES,
@@ -49,7 +49,7 @@ from core.models.users import User, UserManager
 __all__ = [
     "AUTO_PUBLISH_FORMATS", "CHECKPOINT_CHOICES", "CHECKPOINT_HOURS", "FORMAT_CHOICES", "FORMATS", "PAGE_DAILY_FIELDS",
     "PLANNED_FORMATS", "PLANNED_STATUSES", "REF_PREFIX", "ROLE_CHOICES", "ROLE_LABELS", "ROLES",
-    "AIRun", "Account", "AccountDoc", "AuthFlow", "AuthSession", "Company", "CompanySetting", "Counter", "Invitation", "KnowledgeChunk", "KnowledgeSource", "Lead", "LinkedInConnection", "LoginAttempt", "OAuthState",
+    "AIRun", "Account", "AccountDoc", "AuthFlow", "AuthSession", "Company", "CompanySetting", "Counter", "Invitation", "KnowledgeChunk", "KnowledgeSource", "Lead", "LinkedInConnection", "LoginAttempt", "OAuthState", "PasswordReset",
     "PageAudience", "PageDaily", "PlannedPost", "Post", "PostAudience", "RefreshToken", "Snapshot", "SuggestionDecision", "User",
     "UserManager", "assign_missing_refs", "next_post_ref",
 ]

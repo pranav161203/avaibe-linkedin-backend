@@ -31,10 +31,10 @@ from core.auth.cookies import ACCESS_COOKIE, REFRESH_COOKIE, clear_tokens, set_t
 from core.auth.microsoft import SCOPES, msal_app
 from core.auth.permissions import allowed_account_ids, default_account_id
 from core.common.timeutil import as_utc, now_utc
-from core.conf import ADMIN_EMAILS, FRONTEND_URL, MS_REDIRECT_URI, auth_enabled, microsoft_configured
+from core.conf import ADMIN_EMAILS, FRONTEND_URL, MS_REDIRECT_URI, auth_enabled, email_configured, microsoft_configured
 from core.models import AuthFlow, User
-from core.schemas.auth import LoginIn, PasswordChangeIn, SignupIn
-from core.services.auth import AuthError, invitations, sessions, signin, tokens
+from core.schemas.auth import LoginIn, PasswordChangeIn, PasswordResetIn, PasswordResetRequestIn, SignupIn
+from core.services.auth import AuthError, invitations, resets, sessions, signin, tokens
 
 log = logging.getLogger("auth")
 
@@ -72,7 +72,7 @@ def _public(methods):
 @authentication_classes([])
 @permission_classes([AllowAny])
 def me(request):
-    methods = {"password": True, "microsoft": microsoft_configured()}
+    methods = {"password": True, "microsoft": microsoft_configured(), "password_reset": email_configured()}
     user = current_from_request(request._request)
     if user is None:
         return Response({"enabled": True, "methods": methods, "user": None})
@@ -223,6 +223,40 @@ def signup(request):
         _auth_fail(e)
     resp = Response({"signed_in": True}, status=201)
     set_tokens(resp, tokens.start_session(user, "password", _ua(request)))
+    return resp
+
+
+# ------------------------------------------------------------------ forgotten password
+
+
+@_public(["POST"])
+def password_reset_request(request):
+    """Always the same reply, whether or not the email has an account."""
+    if not email_configured():
+        fail(400, "Password reset by email is not available. Contact your administrator.")
+    body = parse(PasswordResetRequestIn, request.data)
+    resets.request(body.email)
+    return Response({"requested": True})
+
+
+@_public(["GET"])
+def password_reset_check(request):
+    try:
+        reset = resets.find(request.query_params.get("token", ""))
+    except AuthError as e:
+        _auth_fail(e)
+    return Response({"email": reset.user.email})
+
+
+@_public(["POST"])
+def password_reset(request):
+    body = parse(PasswordResetIn, request.data)
+    try:
+        issued = resets.confirm(body.token, body.password, _ua(request))
+    except AuthError as e:
+        _auth_fail(e)
+    resp = Response({"signed_in": True})
+    set_tokens(resp, issued)
     return resp
 
 

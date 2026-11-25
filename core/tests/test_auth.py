@@ -378,3 +378,88 @@ class InvitationEmailTests(AuthTestCase):
         self.assertFalse(res.json()["email_sent"])
         self.assertEqual(len(mail.outbox), 0)
         self.assertFalse(self.as_user(self.admin).get("/api/team").json()["email_enabled"])
+
+
+@override_settings(
+    EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend", EMAIL_HOST="smtp.test.invalid", DEFAULT_FROM_EMAIL="AVAIBE <no-reply@test.invalid>"
+)
+class PasswordResetTests(AuthTestCase):
+    """Forgot password: an emailed single-use link, no hint whether an account exists, everyone signed out after."""
+
+    NEW = "harbour-copper-58-dune"
+
+    def setUp(self):
+        super().setUp()
+        now = mock.patch("core.services.auth.resets._in_background", side_effect=lambda fn: fn())
+        now.start()
+        self.addCleanup(now.stop)
+
+    def ask(self, email):
+        return APIClient().post("/api/auth/password-reset/request", {"email": email}, format="json")
+
+    def token_from_email(self):
+        from django.core import mail
+
+        return mail.outbox[-1].body.split("token=")[1].split()[0]
+
+    def test_same_reply_for_known_and_unknown_emails(self):
+        from django.core import mail
+
+        known, unknown = self.ask("admin@avaibe.com"), self.ask("nobody@avaibe.com")
+        self.assertEqual((known.status_code, known.json()), (unknown.status_code, unknown.json()))
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["admin@avaibe.com"])
+        self.assertEqual(mail.outbox[0].subject, "Reset your password")
+
+    def test_reset_sets_password_signs_everyone_out_and_signs_in(self):
+        from core.services.auth import tokens
+
+        other = tokens.start_session(User.objects.get(id=self.admin.id), "password", "")
+        self.ask("admin@avaibe.com")
+        raw = self.token_from_email()
+        c = APIClient()
+        self.assertEqual(c.get(f"/api/auth/password-reset/check?token={raw}").json()["email"], "admin@avaibe.com")
+        res = c.post("/api/auth/password-reset", {"token": raw, "password": self.NEW}, format="json")
+        self.assertEqual(res.status_code, 200)
+        self.assertIn(ACCESS_COOKIE, res.cookies)
+        self.assertIsNotNone(AuthSession.objects.get(id=other.session.id).revoked_at)
+        self.assertEqual(self.login("admin@avaibe.com", self.NEW)[1].status_code, 200)
+        # Single use
+        again = APIClient().post("/api/auth/password-reset", {"token": raw, "password": "another-pass-77-river"}, format="json")
+        self.assertEqual(again.status_code, 410)
+
+    def test_weak_password_keeps_the_link_usable(self):
+        self.ask("admin@avaibe.com")
+        raw = self.token_from_email()
+        self.assertEqual(APIClient().post("/api/auth/password-reset", {"token": raw, "password": "12345"}, format="json").status_code, 400)
+        self.assertEqual(APIClient().get(f"/api/auth/password-reset/check?token={raw}").status_code, 200)
+
+    def test_newer_link_replaces_older_and_hourly_limit(self):
+        from django.core import mail
+
+        self.ask("admin@avaibe.com")
+        first = self.token_from_email()
+        self.ask("admin@avaibe.com")
+        self.assertEqual(APIClient().get(f"/api/auth/password-reset/check?token={first}").status_code, 410)
+        self.ask("admin@avaibe.com")
+        self.ask("admin@avaibe.com")  # fourth in an hour: silently not sent
+        self.assertEqual(len(mail.outbox), 3)
+
+    def test_expired_link_and_deactivated_person(self):
+        from core.models import PasswordReset
+
+        self.ask("admin@avaibe.com")
+        raw = self.token_from_email()
+        PasswordReset.objects.update(expires_at=now_utc() - timedelta(minutes=1))
+        self.assertEqual(APIClient().get(f"/api/auth/password-reset/check?token={raw}").status_code, 410)
+        User.objects.filter(id=self.editor.id).update(is_active=False)
+        from django.core import mail
+
+        before = len(mail.outbox)
+        self.ask("editor@avaibe.com")
+        self.assertEqual(len(mail.outbox), before)
+
+    @override_settings(EMAIL_HOST="")
+    def test_unavailable_without_a_mail_server(self):
+        self.assertEqual(self.ask("admin@avaibe.com").status_code, 400)
+        self.assertFalse(APIClient().get("/api/auth/me").json()["methods"]["password_reset"])

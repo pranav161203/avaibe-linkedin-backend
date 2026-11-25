@@ -67,6 +67,7 @@ them gets the same definition. Services fill `created_by` / `updated_by` from th
 | `auth_sessions` | `id` uuid PK, `user_id`, `method` (password / microsoft), `user_agent`, `created_at`, `last_used_at`, `expires_at`, `revoked_at`, `revoked_reason` | One per signed-in device. Revoking it ends that device's access at once |
 | `auth_refresh_tokens` | `id`, `session_id`, `token_hash` (unique, SHA-256), `created_at`, `expires_at`, `used_at` | The raw token is never stored |
 | `auth_invitations` | `id`, `email`, `company_id` (null = owner), `role`, `can_switch_accounts`, `token_hash` (unique), `invited_by`, `created_at`, `expires_at`, `accepted_at`, `accepted_user_id`, `revoked_at`, `emailed_at` | One-time sign-up links. `emailed_at`: when the current link was emailed |
+| `auth_password_resets` | `id`, `user_id`, `token_hash` (unique, SHA-256), `created_at`, `expires_at`, `used_at` | Forgot-password links: single use, 60 minutes |
 | `auth_login_attempts` | `id`, `email`, `created_at` | Failed passwords only; old rows are deleted as new ones are checked |
 | `auth_flows` | `state` PK, `flow` json, `created_at` | An in-progress Microsoft sign-in (existed before) |
 
@@ -137,6 +138,8 @@ them gets the same definition. Services fill `created_by` / `updated_by` from th
 | `POST /api/auth/password` | signed in | Change (or first set) your password |
 | `GET /api/auth/sessions` | signed in | Your signed-in devices (browser and system, sign-in method, last active) |
 | `DELETE /api/auth/sessions/<id>`, `POST /api/auth/sessions/sign-out-others` | signed in | Sign one other device, or all others, out |
+| `POST /api/auth/password-reset/request` | anyone | Email a reset link. Same reply whether or not the email has an account |
+| `GET /api/auth/password-reset/check?token=`, `POST /api/auth/password-reset` | anyone with a valid link | Which account; set the new password (signs out everywhere, signs this device in) |
 | `GET /api/auth/invitation?token=` | anyone | What an invitation link is for |
 | `POST /api/auth/signup` | anyone with a valid link | Name and password → account, signed in |
 | `GET /api/auth/microsoft`, `GET /api/auth/callback` | anyone | Microsoft sign-in (also accepts a pending invitation) |
@@ -152,6 +155,14 @@ over SMTP (`core/services/auth/emails.py`). The link is also shown once to the p
 shared by hand if the email doesn't arrive. A failed send never cancels the invitation; the cause goes to the server
 log only. Without a mail server the app works as before: copy the link.
 
+## Forgotten passwords
+
+"Forgot password?" appears on the sign-in page when email is configured. The link is single use, expires after 60
+minutes (`PASSWORD_RESET_MINUTES`), and a newer link replaces an older one. The request never reveals whether an email
+has an account: the reply is identical and the email is sent in the background, so the reply time is the same too.
+At most `PASSWORD_RESET_PER_HOUR` (3) links per person per hour; deactivated people and suspended companies get none.
+Setting the new password ends every session, clears the sign-in lockout and signs this device in.
+
 ## Settings
 
 `.env`: `AUTH_ENABLED=true` turns sign-in on (it is also on whenever Microsoft is configured). Optional:
@@ -161,4 +172,3 @@ log only. Without a mail server the app works as before: copy the link.
 
 ## Not done yet
 
-- Password-reset emails (invitation emails are done; reset can use the same mail settings).

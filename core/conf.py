@@ -75,6 +75,9 @@ ACCESS_TOKEN_MINUTES = int(os.getenv("ACCESS_TOKEN_MINUTES", "15"))
 # Refresh token: renews the access token; rotated on every use. A session ends after this many days at most.
 REFRESH_TOKEN_DAYS = int(os.getenv("REFRESH_TOKEN_DAYS", "7"))
 INVITATION_DAYS = int(os.getenv("INVITATION_DAYS", "7"))
+# Password reset links: minutes until they expire, and how many one person can request per hour
+PASSWORD_RESET_MINUTES = int(os.getenv("PASSWORD_RESET_MINUTES", "60"))
+PASSWORD_RESET_PER_HOUR = int(os.getenv("PASSWORD_RESET_PER_HOUR", "3"))
 # Password sign-in: after this many wrong passwords for one email in the window, wait until the window passes
 LOGIN_MAX_FAILURES = int(os.getenv("LOGIN_MAX_FAILURES", "5"))
 LOGIN_LOCK_MINUTES = int(os.getenv("LOGIN_LOCK_MINUTES", "15"))

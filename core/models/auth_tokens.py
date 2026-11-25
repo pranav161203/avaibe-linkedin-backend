@@ -83,6 +83,21 @@ class Invitation(models.Model):
         indexes = [models.Index(fields=["email"], name="auth_inv_email")]
 
 
+class PasswordReset(models.Model):
+    """A "forgot password" link: single use, short-lived. Only its hash is stored. Requesting a new one, or using
+    one, removes the person's other unused links."""
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="+")
+    token_hash = models.CharField(max_length=64, unique=True)  # SHA-256 hex of the random token
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "auth_password_resets"
+        indexes = [models.Index(fields=["user", "created_at"], name="auth_reset_user_created")]
+
+
 class LoginAttempt(models.Model):
     """A failed password sign-in. Old rows are deleted as new ones are checked."""
 
