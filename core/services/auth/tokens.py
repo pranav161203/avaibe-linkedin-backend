@@ -107,7 +107,8 @@ def refresh(raw: str) -> Issued:
     reused = None
     with transaction.atomic():
         row = (
-            RefreshToken.objects.select_for_update()
+            # Lock only the token row: PostgreSQL refuses FOR UPDATE across the optional join to the company
+            RefreshToken.objects.select_for_update(of=("self",))
             .select_related("session", "session__user", "session__user__company")
             .filter(token_hash=hash_token(raw))
             .first()
