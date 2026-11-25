@@ -29,3 +29,20 @@ class Company(Audited):
 
     def __str__(self) -> str:
         return self.name
+
+
+class CompanySetting(Audited):
+    """One editable Settings section for one company: audience definitions ("segments"), performance rules
+    ("performance") or the brand kit ("brand"). Stored as JSON and validated in core.services.settings_store.
+    A section with no row uses the defaults."""
+
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="settings", db_column="company_id")
+    section = models.CharField(max_length=30)
+    value = models.JSONField()
+
+    class Meta:
+        db_table = "company_settings"
+        constraints = [models.UniqueConstraint(fields=["company", "section"], name="company_setting_unique_section")]
+
+    def __str__(self) -> str:
+        return f"{self.company_id}:{self.section}"

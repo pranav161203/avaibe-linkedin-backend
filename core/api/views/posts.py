@@ -18,6 +18,7 @@ def _get_post(post_id: int, user) -> Post:
     p = analytics.posts_queryset().filter(id=post_id).first()
     if not p or p.account_id not in allowed_account_ids(user):
         fail(404, "Post not found")
+    check_account(user, p.account_id)  # passes (checked above); applies the account's company settings
     return p
 
 

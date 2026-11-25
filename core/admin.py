@@ -5,9 +5,9 @@ from django.contrib import admin
 from core.models import (
     Account,
     AIRun,
-    AppSetting,
     AuthSession,
     Company,
+    CompanySetting,
     Invitation,
     LinkedInConnection,
     PageAudience,
@@ -118,6 +118,7 @@ class AIRunAdmin(admin.ModelAdmin):
     readonly_fields = [f.name for f in AIRun._meta.fields]
 
 
-@admin.register(AppSetting)
-class AppSettingAdmin(admin.ModelAdmin):
-    list_display = ("key", "updated_at")
+@admin.register(CompanySetting)
+class CompanySettingAdmin(admin.ModelAdmin):
+    list_display = ("company", "section", "updated_at", "updated_by")
+    list_filter = ("company", "section")

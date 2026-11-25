@@ -3,8 +3,10 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from core.api.errors import fail
+from core.api.params import int_param
 from core.auth.permissions import is_owner, require
 from core.conf import ANTHROPIC_API_KEY, CLAUDE_MODEL
+from core.models import Company
 from core.services import settings_store
 from core.services.ai import usage as ai_usage
 
@@ -17,9 +19,28 @@ def _section(section: str) -> str:
     return section
 
 
+def _company_id(request) -> int:
+    """Whose settings: your own company, or for an owner the ?company_id= they are managing."""
+    user = request.user
+    if not is_owner(user):
+        if not user.company_id:
+            fail(403, "Your account is not assigned to a company")
+        return user.company_id
+    company_id = int_param(request, "company_id")
+    if company_id is None:
+        ids = list(Company.objects.values_list("id", flat=True)[:2])
+        if len(ids) != 1:
+            fail(400, "Select a company")
+        return ids[0]
+    if not Company.objects.filter(id=company_id).exists():
+        fail(404, "Company not found")
+    return company_id
+
+
 @api_view(["GET"])
 def get_settings(request):
-    return Response({"current": settings_store.all_settings(), "defaults": settings_store.DEFAULTS})
+    company_id = _company_id(request)
+    return Response({"company_id": company_id, "current": settings_store.all_settings(company_id), "defaults": settings_store.DEFAULTS})
 
 
 @api_view(["PUT"])
@@ -27,7 +48,7 @@ def save_section(request, section: str):
     require(request.user, "admin")
     _section(section)
     try:
-        return Response(settings_store.save(section, request.data))
+        return Response(settings_store.save(section, request.data, _company_id(request), request.user.id))
     except ValidationError as e:
         err = e.errors()[0]  # first readable message
         where = ".".join(str(x) for x in err.get("loc", ()) if x != "__root__")
@@ -40,7 +61,7 @@ def save_section(request, section: str):
 @api_view(["POST"])
 def reset_section(request, section: str):
     require(request.user, "admin")
-    return Response(settings_store.reset(_section(section)))
+    return Response(settings_store.reset(_section(section), _company_id(request)))
 
 
 @api_view(["GET"])

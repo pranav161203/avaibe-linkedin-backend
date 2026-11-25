@@ -12,12 +12,13 @@ Three groups, kept apart on purpose:
 |---|---|---|
 | Identity | `users`, `companies` | Who people are and which company they belong to |
 | Sign-in state | `auth_sessions`, `auth_refresh_tokens`, `auth_invitations`, `auth_login_attempts`, `auth_flows` | Sessions, tokens, invitation links, failed attempts. Nothing here describes a person; it only points at `users.id` |
-| Company data | `accounts`, `knowledge_sources`, ... | Each row belongs to one company (`company_id`), directly or through its account |
+| Company data | `accounts`, `knowledge_sources`, `company_settings`, ... | Each row belongs to one company (`company_id`), directly or through its account |
 
 ```
 companies ─┬─< users                     users.company_id → companies.id   (NULL only for super admins)
            ├─< accounts ─< posts, leads… accounts.company_id → companies.id
            ├─< knowledge_sources         knowledge_sources.company_id → companies.id
+           ├─< company_settings          company_settings.company_id → companies.id (one row per section)
            ├─< auth_invitations          (NULL company = a super admin invitation)
            └── default_account_id → accounts.id
 
@@ -120,8 +121,10 @@ them gets the same definition. Services fill `created_by` / `updated_by` from th
 - Team and invitation endpoints are limited to the person's company. Super admins pass `?company_id=`.
 - Setup details are for owners only: setting names (e.g. `ANTHROPIC_API_KEY`), the Claude key hint and the
   platform-wide AI usage and cost. Everyone else gets a plain message (`core/auth/permissions.py: for_viewer()`).
-- Still shared by everyone: the Settings sections (audience definitions, performance rules, brand kit, Claude).
-  They need to move per company before a second real company is invited.
+- Settings sections are per company (`company_settings`: one row per company and section, with the four audit
+  columns). Audience definitions, performance rules and the brand kit apply to that company's accounts only; a
+  section with no row uses the defaults. Analytics read the settings of the account's company
+  (`core/services/settings_store.py`), set per request by `check_account`. Owners pick the company on the Settings page.
 
 ## Endpoints
 
@@ -149,5 +152,4 @@ them gets the same definition. Services fill `created_by` / `updated_by` from th
 ## Not done yet
 
 - Sending invitation and password-reset emails (the app shows the link to copy). Password reset needs email first.
-- Per-company settings (see above).
 - A "your devices" list to sign out one session (the table already supports it).

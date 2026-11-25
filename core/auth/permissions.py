@@ -19,6 +19,7 @@ from rest_framework.exceptions import NotFound, PermissionDenied
 
 from core.auth.authentication import CurrentUser
 from core.models import ROLE_LABELS, Account, Company
+from core.services import settings_store
 
 
 def require(user: CurrentUser, role: str) -> None:
@@ -62,9 +63,13 @@ def allowed_account_ids(user: CurrentUser) -> list[int]:
 
 
 def check_account(user: CurrentUser, account_id: int) -> None:
+    """The person may see this account. Also makes the account's company the one whose Settings apply for the
+    rest of the request (an owner can look at any company's account)."""
     if account_id not in allowed_account_ids(user):
         # 404 rather than 403, so people can't probe which accounts exist
         raise NotFound("Account not found")
+    company_id = user.company_id if user.company_id else Account.objects.filter(id=account_id).values_list("company_id", flat=True).first()
+    settings_store.use_company(company_id)
 
 
 def is_owner(user) -> bool:

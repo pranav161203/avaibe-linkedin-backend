@@ -19,7 +19,8 @@ from psycopg.rows import dict_row
 from core.conf import BASE_DIR, UPLOAD_DIR
 from core.models import (
     Account,
-    AppSetting,
+    Company,
+    CompanySetting,
     LinkedInConnection,
     PageAudience,
     PlannedPost,
@@ -63,11 +64,13 @@ class Command(BaseCommand):
 
         with transaction.atomic():
             # Clear app data (including the starter account a fresh migrate creates)
-            for model in (PlannedPost, LinkedInConnection, PageAudience, PostAudience, Snapshot, Post, Account, AppSetting, User):
+            for model in (PlannedPost, LinkedInConnection, PageAudience, PostAudience, Snapshot, Post, Account, CompanySetting, User):
                 model.objects.all().delete()
+            # The previous app served one organisation: everything goes into the AVAIBE company
+            company, _ = Company.objects.get_or_create(slug="avaibe", defaults={"name": "AVAIBE", "country": "AE"})
 
             Account.objects.bulk_create([
-                Account(id=r["id"], name=r["name"], kind=r["kind"], linkedin_url=r["linkedin_url"], is_test=r["is_test"])
+                Account(id=r["id"], name=r["name"], kind=r["kind"], linkedin_url=r["linkedin_url"], is_test=r["is_test"], company=company)
                 for r in data["accounts"]
             ])
             Post.objects.bulk_create([
@@ -109,9 +112,14 @@ class Command(BaseCommand):
                 )
                 for r in data["planned_posts"]
             ])
-            AppSetting.objects.bulk_create([AppSetting(key=r["key"], value=r["value"]) for r in data["app_settings"]])
+            CompanySetting.objects.bulk_create([
+                CompanySetting(company=company, section=r["key"], value=r["value"])
+                for r in data["app_settings"]
+                if r["key"] in settings_store.VALIDATORS
+            ])
             for r in data["users"]:
                 u = User(id=r["id"], email=r["email"].lower(), name=r["name"], role=r["role"],
+                         company=None if r["role"] == "superadmin" else company,
                          can_switch_accounts=r["can_switch_accounts"], is_active=r["active"], last_login=r["last_login_at"])
                 u.set_unusable_password()  # Microsoft sign-in only
                 u.save()

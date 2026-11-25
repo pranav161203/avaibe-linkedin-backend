@@ -56,6 +56,9 @@ def _cp(request) -> str:
 
 @api_view(["GET"])
 def meta(request):
+    """Labels and thresholds. With ?account_id= they are that account's company settings."""
+    if (account_id := int_param(request, "account_id")) is not None:
+        check_account(request.user, account_id)
     return Response(
         {
             "segments": segments.describe(),

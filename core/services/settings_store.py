@@ -1,16 +1,22 @@
-"""Editable app settings (audience definitions, performance rules, access defaults), stored in the
-database and cached in memory for a short time. Code reads them through get(); the Settings page
-writes them through save(). Defaults apply until someone changes a value.
+"""Editable Settings sections, kept per company: audience definitions ("segments"), performance rules
+("performance") and the brand kit ("brand"). Stored in company_settings and cached in memory for a short time.
+Defaults apply until a company changes a section.
+
+Which company: an explicit company_id, or else the company of the request being served. That is set from the
+signed-in person's company, and narrowed to the account's company whenever an endpoint checks an account
+(core.auth.permissions.check_account), so analytics code can call get() without passing the company around.
 
 The cache refreshes every CACHE_SECONDS so several server processes stay in step."""
 
 import time
+from contextvars import ContextVar
 from copy import deepcopy
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from core.models import AppSetting
+from core.models import Company, CompanySetting
+from core.services.auth.audit import stamp
 
 CACHE_SECONDS = 30
 DEFAULTS: dict[str, dict[str, Any]] = {
@@ -45,19 +51,13 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "trend_threshold": 0.10,  # change vs previous period that counts as improving/declining
     },
     "brand": {
-        # What Claude needs to be creative about AVAIBE specifically (edited in Settings → Brand & knowledge)
-        "company_summary": "AVAIBE is a UAE-based software company building custom software, ERP and education technology (LMS and school systems).",
-        "website": "https://avaibe.com",
+        # What Claude needs to know about the company (edited in Settings → Claude). Empty until the company fills it in.
+        "company_summary": "",
+        "website": "",
         "services": [],
-        "target_segments": [
-            "UAE decision-makers: CEOs, founders, school principals, directors, business owners",
-            "Technology professionals: CTOs, IT managers, developers, consultants",
-            "Potential partners: consultants, technology partners, agencies",
-        ],
+        "target_segments": [],
         "differentiators": [],
-        "proof_points": [
-            "Client logos shown publicly on avaibe.com: Next Generation School, CyberDisti, Alrajhi Education Management, Marathon Education UK, Costain Process Engineering & Technical LLC, American Islamic School (name clients in posts only with their permission)",
-        ],
+        "proof_points": [],
         "voice": "Professional, practical and UAE-aware. Plain English, specific examples, no hype or buzzwords.",
         "avoid": [
             "Claims that can't be verified",
@@ -67,13 +67,7 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "competitors": [],
         "languages": ["English"],
     },
-    "access": {
-        # The only account people WITHOUT "can switch accounts" can see. None = first company page.
-        "default_account_id": None,
-    },
 }
-
-_cache: dict[str, dict[str, Any]] = deepcopy(DEFAULTS)
 
 
 # ------------------------------------------------------------------ validation
@@ -164,59 +158,94 @@ class BrandIn(BaseModel):
         return v.strip()
 
 
-class AccessIn(BaseModel):
-    default_account_id: int | None = Field(default=None, ge=1)
+VALIDATORS = {"segments": SegmentsIn, "performance": PerformanceIn, "brand": BrandIn}
 
 
-VALIDATORS = {"segments": SegmentsIn, "performance": PerformanceIn, "access": AccessIn, "brand": BrandIn}
+# ------------------------------------------------------------------ which company
+
+_company: ContextVar[int | None] = ContextVar("settings_company", default=None)
 
 
-# ------------------------------------------------------------------ access
+def use_company(company_id: int | None) -> None:
+    """Set the company for the rest of this request (reset at the start of each request by the middleware)."""
+    _company.set(company_id)
 
-_loaded_at = 0.0
+
+def current_company() -> int | None:
+    return _company.get()
 
 
-def _refresh(force: bool = False) -> None:
-    global _loaded_at
-    if not force and time.monotonic() - _loaded_at < CACHE_SECONDS:
-        return
+_only_company: tuple[float, int | None] = (0.0, None)
+
+
+def _resolve(company_id: int | None) -> int | None:
+    """Explicit id, else the request's company, else the only company if there is exactly one (scripts, owners
+    on a page with no account). None means defaults."""
+    global _only_company
+    if company_id is not None:
+        return company_id
+    if (cid := _company.get()) is not None:
+        return cid
+    loaded, cid = _only_company
+    if time.monotonic() - loaded >= CACHE_SECONDS:
+        try:
+            ids = list(Company.objects.values_list("id", flat=True)[:2])
+        except Exception:  # table missing (before migrate) or DB unavailable
+            ids = []
+        cid = ids[0] if len(ids) == 1 else None
+        _only_company = (time.monotonic(), cid)
+    return cid
+
+
+# ------------------------------------------------------------------ reading and writing
+
+_cache: dict[int | None, tuple[float, dict[str, dict[str, Any]]]] = {}
+
+
+def _load(company_id: int | None, force: bool = False) -> dict[str, dict[str, Any]]:
+    hit = _cache.get(company_id)
+    if hit and not force and time.monotonic() - hit[0] < CACHE_SECONDS:
+        return hit[1]
     fresh = deepcopy(DEFAULTS)
-    try:
-        for row in AppSetting.objects.all():
-            if row.key in fresh:
-                fresh[row.key].update({k: v for k, v in (row.value or {}).items() if k in fresh[row.key]})
-    except Exception:  # table missing (before migrate) or DB unavailable: fall back to defaults
-        pass
-    _cache.clear()
-    _cache.update(fresh)
-    _loaded_at = time.monotonic()
+    if company_id is not None:
+        try:
+            for row in CompanySetting.objects.filter(company_id=company_id):
+                if row.section in fresh:
+                    fresh[row.section].update({k: v for k, v in (row.value or {}).items() if k in fresh[row.section]})
+        except Exception:  # table missing (before migrate) or DB unavailable: fall back to defaults
+            pass
+    _cache[company_id] = (time.monotonic(), fresh)
+    return fresh
 
 
-def get(section: str) -> dict[str, Any]:
-    _refresh()
-    return _cache[section]
+def get(section: str, company_id: int | None = None) -> dict[str, Any]:
+    return _load(_resolve(company_id))[section]
 
 
-def all_settings() -> dict[str, Any]:
-    _refresh()
-    return {k: deepcopy(v) for k, v in _cache.items()}
+def all_settings(company_id: int | None = None) -> dict[str, Any]:
+    return {k: deepcopy(v) for k, v in _load(_resolve(company_id)).items()}
 
 
-def save(section: str, value: dict[str, Any]) -> dict[str, Any]:
-    """Validate, persist and cache one section. Raises pydantic.ValidationError on bad input."""
+def save(section: str, value: dict[str, Any], company_id: int, actor_id: int | None = None) -> dict[str, Any]:
+    """Validate, persist and cache one section for one company. Raises pydantic.ValidationError on bad input."""
     clean = VALIDATORS[section](**value).model_dump()
-    AppSetting.objects.update_or_create(key=section, defaults={"value": clean})
-    _refresh(force=True)
-    return _cache[section]
+    row = CompanySetting.objects.filter(company_id=company_id, section=section).first()
+    created = row is None
+    if created:
+        row = CompanySetting(company_id=company_id, section=section)
+    row.value = clean
+    stamp(row, actor_id, created=created)
+    row.save()
+    return _load(company_id, force=True)[section]
 
 
-def reset(section: str) -> dict[str, Any]:
-    AppSetting.objects.filter(key=section).delete()
-    _refresh(force=True)
-    return _cache[section]
+def reset(section: str, company_id: int) -> dict[str, Any]:
+    CompanySetting.objects.filter(company_id=company_id, section=section).delete()
+    return _load(company_id, force=True)[section]
 
 
 def invalidate() -> None:
-    """Force a reload on next access (used by tests)."""
-    global _loaded_at
-    _loaded_at = 0.0
+    """Force a reload on next access (used by tests and imports)."""
+    global _only_company
+    _cache.clear()
+    _only_company = (0.0, None)

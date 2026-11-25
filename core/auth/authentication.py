@@ -15,6 +15,7 @@ from rest_framework.permissions import BasePermission
 from core.auth.cookies import ACCESS_COOKIE
 from core.conf import auth_enabled, read_only_without_signin
 from core.models import ROLES
+from core.services import settings_store
 from core.services.auth import AuthError, tokens
 
 
@@ -100,6 +101,7 @@ class AppAuthentication(BaseAuthentication):
         if user is None:
             return None  # 401: the app then tries /api/auth/refresh once
         enforce_csrf(request._request)
+        settings_store.use_company(user.company_id)  # owners: set per account by check_account
         return (user, None)
 
     def authenticate_header(self, request):
