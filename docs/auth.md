@@ -66,7 +66,7 @@ them gets the same definition. Services fill `created_by` / `updated_by` from th
 |---|---|---|
 | `auth_sessions` | `id` uuid PK, `user_id`, `method` (password / microsoft), `user_agent`, `created_at`, `last_used_at`, `expires_at`, `revoked_at`, `revoked_reason` | One per signed-in device. Revoking it ends that device's access at once |
 | `auth_refresh_tokens` | `id`, `session_id`, `token_hash` (unique, SHA-256), `created_at`, `expires_at`, `used_at` | The raw token is never stored |
-| `auth_invitations` | `id`, `email`, `company_id` (null = super admin), `role`, `can_switch_accounts`, `token_hash` (unique), `invited_by`, `created_at`, `expires_at`, `accepted_at`, `accepted_user_id`, `revoked_at` | One-time sign-up links |
+| `auth_invitations` | `id`, `email`, `company_id` (null = owner), `role`, `can_switch_accounts`, `token_hash` (unique), `invited_by`, `created_at`, `expires_at`, `accepted_at`, `accepted_user_id`, `revoked_at`, `emailed_at` | One-time sign-up links. `emailed_at`: when the current link was emailed |
 | `auth_login_attempts` | `id`, `email`, `created_at` | Failed passwords only; old rows are deleted as new ones are checked |
 | `auth_flows` | `state` PK, `flow` json, `created_at` | An in-progress Microsoft sign-in (existed before) |
 
@@ -145,12 +145,20 @@ them gets the same definition. Services fill `created_by` / `updated_by` from th
 | `PUT, DELETE /api/team/<id>` | admin | Change or remove someone |
 | `DELETE /api/team/invitations/<id>`, `POST .../renew` | admin | Cancel an invitation, or make a new link |
 
+## Invitation emails
+
+When `EMAIL_HOST` and `DEFAULT_FROM_EMAIL` are set, inviting someone (or making a new link) emails them the link
+over SMTP (`core/services/auth/emails.py`). The link is also shown once to the person who invited, so it can be
+shared by hand if the email doesn't arrive. A failed send never cancels the invitation; the cause goes to the server
+log only. Without a mail server the app works as before: copy the link.
+
 ## Settings
 
 `.env`: `AUTH_ENABLED=true` turns sign-in on (it is also on whenever Microsoft is configured). Optional:
 `JWT_SIGNING_KEY`, `ACCESS_TOKEN_MINUTES`, `REFRESH_TOKEN_DAYS`, `INVITATION_DAYS`, `LOGIN_MAX_FAILURES`,
-`LOGIN_LOCK_MINUTES`.
+`LOGIN_LOCK_MINUTES`. Email: `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS`,
+`DEFAULT_FROM_EMAIL`.
 
 ## Not done yet
 
-- Sending invitation and password-reset emails (the app shows the link to copy). Password reset needs email first.
+- Password-reset emails (invitation emails are done; reset can use the same mail settings).

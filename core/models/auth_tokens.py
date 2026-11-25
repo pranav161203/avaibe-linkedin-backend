@@ -74,6 +74,8 @@ class Invitation(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+", db_column="accepted_user_id"
     )
     revoked_at = models.DateTimeField(null=True, blank=True)
+    # Last time the link was sent by email (null: shared by hand, or email not configured)
+    emailed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "auth_invitations"

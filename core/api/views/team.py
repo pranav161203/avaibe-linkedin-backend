@@ -15,11 +15,11 @@ from core.api.params import int_param, parse
 from core.auth.authentication import CurrentUser
 from core.auth.permissions import default_account_id, require
 from core.common.timeutil import as_utc, now_utc
-from core.conf import FRONTEND_URL
+from core.conf import FRONTEND_URL, email_configured
 from core.models import Account, Company, Invitation, User
 from core.schemas.auth import InviteIn
 from core.schemas.team import DefaultAccountIn, MemberIn
-from core.services.auth import AuthError, invitations
+from core.services.auth import AuthError, emails, invitations
 from core.services.auth.audit import stamp
 from core.services.auth.tokens import revoke_user_sessions
 
@@ -54,10 +54,23 @@ def invitation_out(inv: Invitation, token: str | None = None) -> dict:
         "invited_by": inv.invited_by.email if inv.invited_by_id else None,
         "created_at": _iso(inv.created_at),
         "expires_at": _iso(inv.expires_at),
+        "emailed_at": _iso(inv.emailed_at),
     }
     if token:  # only right after creating or renewing: the link can't be shown again later
         out["token"] = token
-        out["link"] = f"{FRONTEND_URL}/signup?token={token}"
+        out["link"] = _link(token)
+    return out
+
+
+def _link(token: str) -> str:
+    return f"{FRONTEND_URL}/signup?token={token}"
+
+
+def _send(inv: Invitation, token: str, me: CurrentUser) -> dict:
+    """Email the new link (when email is set up) and say whether it went, next to the link to copy."""
+    sent = emails.send_invitation(inv, _link(token), me.name or me.email or "Your administrator")
+    out = invitation_out(inv, token)
+    out["email_sent"] = sent
     return out
 
 
@@ -111,6 +124,7 @@ def members(request):
                 "invitations": [invitation_out(i) for i in invitations.pending(company_id)],
                 "company": Company.objects.filter(id=company_id).values("id", "name").first() if company_id else None,
                 "default_account_id": default_account_id(scoped) if company_id else None,
+                "email_enabled": email_configured(),
             }
         )
     body = parse(InviteIn, request.data)
@@ -124,7 +138,7 @@ def members(request):
         inv, token = invitations.create(body.email, company, body.role, body.can_switch_accounts, me.id)
     except AuthError as e:
         fail(e.status, e.message)
-    return Response(invitation_out(inv, token), status=201)
+    return Response(_send(inv, token, me), status=201)
 
 
 def _target(request, user_id: int) -> User:
@@ -196,7 +210,7 @@ def invitation_renew(request, invitation_id: int):
         token = invitations.renew(inv)
     except AuthError as e:
         fail(e.status, e.message)
-    return Response(invitation_out(inv, token))
+    return Response(_send(inv, token, request.user))
 
 
 @api_view(["PUT"])

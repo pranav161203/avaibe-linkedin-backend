@@ -325,3 +325,56 @@ class SessionListTests(AuthTestCase):
         self.assertEqual(c.post("/api/auth/sessions/sign-out-others").json()["signed_out"], 2)
         rows = c.get("/api/auth/sessions").json()
         self.assertEqual([r["current"] for r in rows], [True])
+
+
+@override_settings(
+    EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend", EMAIL_HOST="smtp.test.invalid", DEFAULT_FROM_EMAIL="AVAIBE <no-reply@test.invalid>"
+)
+class InvitationEmailTests(AuthTestCase):
+    """With a mail server set, inviting someone emails them the link; without one, or if sending fails, the
+    invitation still works and the link is shown to copy."""
+
+    def invite(self, email="new.editor@school.test"):
+        return self.as_user(self.admin).post("/api/team", {"email": email, "role": "editor", "can_switch_accounts": False}, format="json")
+
+    def test_invitation_is_emailed(self):
+        from django.core import mail
+
+        res = self.invite()
+        self.assertEqual(res.status_code, 201)
+        body = res.json()
+        self.assertTrue(body["email_sent"])
+        self.assertIsNotNone(body["emailed_at"])
+        self.assertEqual(len(mail.outbox), 1)
+        msg = mail.outbox[0]
+        self.assertEqual(msg.to, ["new.editor@school.test"])
+        self.assertEqual(msg.subject, "Invitation to join AVAIBE")
+        self.assertIn(body["link"], msg.body)
+        self.assertIn(body["link"], msg.alternatives[0][0])
+        self.assertTrue(self.as_user(self.admin).get("/api/team").json()["email_enabled"])
+
+    def test_renewing_sends_the_new_link(self):
+        from django.core import mail
+
+        inv_id = self.invite().json()["id"]
+        renewed = self.as_user(self.admin).post(f"/api/team/invitations/{inv_id}/renew").json()
+        self.assertTrue(renewed["email_sent"])
+        self.assertEqual(len(mail.outbox), 2)
+        self.assertIn(renewed["link"], mail.outbox[1].body)
+
+    def test_failed_send_keeps_the_invitation(self):
+        with mock.patch("django.core.mail.EmailMultiAlternatives.send", side_effect=OSError("connection refused")):
+            res = self.invite()
+        self.assertEqual(res.status_code, 201)
+        self.assertFalse(res.json()["email_sent"])
+        self.assertIsNone(res.json()["emailed_at"])
+        self.assertTrue(Invitation.objects.filter(email="new.editor@school.test", revoked_at__isnull=True).exists())
+
+    @override_settings(EMAIL_HOST="")
+    def test_no_mail_server_means_link_only(self):
+        from django.core import mail
+
+        res = self.invite()
+        self.assertFalse(res.json()["email_sent"])
+        self.assertEqual(len(mail.outbox), 0)
+        self.assertFalse(self.as_user(self.admin).get("/api/team").json()["email_enabled"])

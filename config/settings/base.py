@@ -172,3 +172,14 @@ LOGGING = {
         "django.server": {"level": "WARNING"},  # runserver's own access lines: core.request already logs them
     },
 }
+
+# Outgoing email (invitations), over SMTP: Microsoft 365, Google Workspace or any provider. Off until EMAIL_HOST
+# and DEFAULT_FROM_EMAIL are set; until then the app shows the invitation link to copy instead.
+EMAIL_HOST = os.getenv("EMAIL_HOST", "")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", True)  # STARTTLS on 587
+EMAIL_USE_SSL = env_bool("EMAIL_USE_SSL", False)  # implicit TLS on 465 (use one or the other)
+EMAIL_TIMEOUT = 10  # seconds: a slow mail server must not hold up the request for long
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "")

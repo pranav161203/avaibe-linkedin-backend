@@ -54,7 +54,8 @@ def renew(inv: Invitation) -> str:
         raise AuthError("accepted", "This invitation has already been used")
     raw = secrets.token_urlsafe(32)
     inv.token_hash, inv.expires_at, inv.revoked_at = hash_token(raw), now_utc() + timedelta(days=INVITATION_DAYS), None
-    inv.save(update_fields=["token_hash", "expires_at", "revoked_at"])
+    inv.emailed_at = None  # an earlier email holds the old link
+    inv.save(update_fields=["token_hash", "expires_at", "revoked_at", "emailed_at"])
     return raw
 
 

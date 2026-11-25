@@ -51,6 +51,13 @@ def read_only_without_signin() -> bool:
     return os.getenv("READ_ONLY_WITHOUT_SIGNIN", "").strip().lower() in ("1", "true", "yes")
 
 
+def email_configured() -> bool:
+    """Invitation emails are sent when a mail server and a sender address are set (see config/settings/base.py)."""
+    from django.conf import settings
+
+    return bool(settings.EMAIL_HOST and settings.DEFAULT_FROM_EMAIL)
+
+
 def microsoft_configured() -> bool:
     # Read live so tests can switch it per run
     return bool(os.getenv("MS_TENANT_ID") and os.getenv("MS_CLIENT_ID") and os.getenv("MS_CLIENT_SECRET"))
