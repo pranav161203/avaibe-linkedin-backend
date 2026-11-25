@@ -275,3 +275,53 @@ class SetupDetailTests(AuthTestCase):
         self.assertFalse(admin["configured"])
         self.assertEqual(admin["missing"], [])
         self.assertIn("LINKEDIN_CLIENT_ID", owner["missing"])
+
+
+class SessionListTests(AuthTestCase):
+    """Your signed-in devices: listed, and you can sign one (or all others) out. Never someone else's."""
+
+    WINDOWS_CHROME = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36"
+    IPHONE_SAFARI = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1"
+
+    def test_device_names(self):
+        from core.services.auth.sessions import describe_device
+
+        self.assertEqual(describe_device(self.WINDOWS_CHROME), "Chrome on Windows")
+        self.assertEqual(describe_device(self.IPHONE_SAFARI), "Safari on iPhone")
+        self.assertEqual(describe_device(self.WINDOWS_CHROME.replace("Safari/537.36", "Safari/537.36 Edg/130.0")), "Edge on Windows")
+        self.assertEqual(describe_device(""), "Unknown device")
+
+    def test_list_marks_this_device_and_signs_out_another(self):
+        from core.services.auth import tokens
+
+        phone = tokens.start_session(User.objects.get(id=self.admin.id), "password", self.IPHONE_SAFARI)
+        c = self.as_user(self.admin)
+        rows = c.get("/api/auth/sessions").json()
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(sum(r["current"] for r in rows), 1)
+        self.assertIn("Safari on iPhone", [r["device"] for r in rows])
+        current = next(r["id"] for r in rows if r["current"])
+        self.assertEqual(c.delete(f"/api/auth/sessions/{current}").status_code, 400)  # use Sign out for this one
+        self.assertEqual(c.delete(f"/api/auth/sessions/{phone.session.id}").status_code, 204)
+        self.assertIsNotNone(AuthSession.objects.get(id=phone.session.id).revoked_at)
+        self.assertEqual(len(c.get("/api/auth/sessions").json()), 1)
+
+    def test_cannot_touch_another_persons_session(self):
+        from core.services.auth import tokens
+
+        theirs = tokens.start_session(User.objects.get(id=self.editor.id), "password", "")
+        c = self.as_user(self.admin)
+        self.assertEqual(c.delete(f"/api/auth/sessions/{theirs.session.id}").status_code, 404)
+        self.assertEqual(c.delete("/api/auth/sessions/not-a-uuid").status_code, 404)
+        self.assertIsNone(AuthSession.objects.get(id=theirs.session.id).revoked_at)
+
+    def test_sign_out_all_other_devices(self):
+        from core.services.auth import tokens
+
+        user = User.objects.get(id=self.admin.id)
+        for _ in range(2):
+            tokens.start_session(user, "password", "")
+        c = self.as_user(self.admin)
+        self.assertEqual(c.post("/api/auth/sessions/sign-out-others").json()["signed_out"], 2)
+        rows = c.get("/api/auth/sessions").json()
+        self.assertEqual([r["current"] for r in rows], [True])

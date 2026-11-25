@@ -33,7 +33,7 @@ class AuthSession(models.Model):
     # Absolute end: after this the person signs in again, however active they were
     expires_at = models.DateTimeField()
     revoked_at = models.DateTimeField(null=True, blank=True)
-    # signed_out | password_changed | token_reuse | user_disabled | removed
+    # signed_out | signed_out_remotely | password_changed | token_reuse | user_disabled | removed
     revoked_reason = models.CharField(max_length=30, blank=True, default="")
 
     class Meta:

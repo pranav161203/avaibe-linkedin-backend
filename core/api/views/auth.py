@@ -34,7 +34,7 @@ from core.common.timeutil import as_utc, now_utc
 from core.conf import ADMIN_EMAILS, FRONTEND_URL, MS_REDIRECT_URI, auth_enabled, microsoft_configured
 from core.models import AuthFlow, User
 from core.schemas.auth import LoginIn, PasswordChangeIn, SignupIn
-from core.services.auth import AuthError, invitations, signin, tokens
+from core.services.auth import AuthError, invitations, sessions, signin, tokens
 
 log = logging.getLogger("auth")
 
@@ -152,6 +152,54 @@ def change_password(request):
     except AuthError as e:
         _auth_fail(e)
     return Response({"changed": True})
+
+
+# ------------------------------------------------------------------ signed-in devices
+
+
+def _signed_in(request):
+    me = request.user
+    if me.dev:
+        fail(400, "Sessions are not available while sign-in is disabled")
+    return me
+
+
+@api_view(["GET"])
+def session_list(request):
+    me = _signed_in(request)
+    return Response(
+        [
+            {
+                "id": str(s.id),
+                "device": sessions.describe_device(s.user_agent),
+                "method": s.method,
+                "created_at": as_utc(s.created_at).isoformat(),
+                "last_used_at": as_utc(s.last_used_at).isoformat(),
+                "expires_at": as_utc(s.expires_at).isoformat(),
+                "current": str(s.id) == str(me.session_id),
+            }
+            for s in sessions.active(me.id)
+        ]
+    )
+
+
+@api_view(["DELETE"])
+def session_detail(request, session_id: str):
+    """Sign one device out. Signing out this device is the regular sign-out (it also clears the cookies)."""
+    me = _signed_in(request)
+    if session_id == str(me.session_id):
+        fail(400, "Use Sign out to end the current session")
+    try:
+        sessions.sign_out_device(me.id, session_id)
+    except AuthError as e:
+        _auth_fail(e)
+    return Response(status=204)
+
+
+@api_view(["POST"])
+def sessions_sign_out_others(request):
+    me = _signed_in(request)
+    return Response({"signed_out": sessions.sign_out_others(me.id, me.session_id)})
 
 
 # ------------------------------------------------------------------ invitations (sign-up)

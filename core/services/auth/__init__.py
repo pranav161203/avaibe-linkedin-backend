@@ -3,6 +3,7 @@
 - passwords.py    rules for a new password (Django's validators), setting and checking it
 - tokens.py       sessions, access tokens (signed JWT) and refresh tokens (rotated, stored as hashes)
 - signin.py       email + password sign-in with a lock after repeated failures
+- sessions.py     a person's signed-in devices: list, sign one or all others out
 - invitations.py  invite-only sign-up links
 - companies.py    creating and changing companies
 - audit.py        filling created_by / updated_by

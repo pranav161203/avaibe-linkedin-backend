@@ -135,6 +135,8 @@ them gets the same definition. Services fill `created_by` / `updated_by` from th
 | `POST /api/auth/refresh` | anyone with the cookie | New access and refresh tokens |
 | `POST /api/auth/logout` | signed in | Ends this session |
 | `POST /api/auth/password` | signed in | Change (or first set) your password |
+| `GET /api/auth/sessions` | signed in | Your signed-in devices (browser and system, sign-in method, last active) |
+| `DELETE /api/auth/sessions/<id>`, `POST /api/auth/sessions/sign-out-others` | signed in | Sign one other device, or all others, out |
 | `GET /api/auth/invitation?token=` | anyone | What an invitation link is for |
 | `POST /api/auth/signup` | anyone with a valid link | Name and password → account, signed in |
 | `GET /api/auth/microsoft`, `GET /api/auth/callback` | anyone | Microsoft sign-in (also accepts a pending invitation) |
@@ -152,4 +154,3 @@ them gets the same definition. Services fill `created_by` / `updated_by` from th
 ## Not done yet
 
 - Sending invitation and password-reset emails (the app shows the link to copy). Password reset needs email first.
-- A "your devices" list to sign out one session (the table already supports it).
