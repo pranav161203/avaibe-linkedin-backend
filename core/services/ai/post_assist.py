@@ -164,10 +164,10 @@ def read_attachment(upload) -> dict:
 
     media_type = (upload.content_type or "").split(";")[0].strip().lower()
     if media_type not in ATTACHMENT_TYPES:
-        raise claude.AIError("The AI can look at images (JPG, PNG, GIF, WebP) and PDFs. Videos can't be read.")
+        raise claude.AIError("Supported attachments: images (JPG, PNG, GIF, WebP) and PDF files. Video is not supported.")
     limit = MAX_PDF_BYTES if media_type == "application/pdf" else MAX_IMAGE_BYTES
     if upload.size > limit:
-        raise claude.AIError(f"That file is too large for the AI to read (limit {limit // (1024 * 1024)} MB).")
+        raise claude.AIError(f"The file exceeds the {limit // (1024 * 1024)} MB limit.")
     return {"media_type": media_type, "data": base64.standard_b64encode(upload.read()).decode("ascii"), "name": upload.name}
 
 def attachment_block(att: dict) -> dict:
@@ -196,18 +196,18 @@ def call_claude_post(prompt: str, attachment: dict | None = None) -> tuple[PostA
         )
 
     if resp.stop_reason == "refusal":
-        raise claude.AIError("Claude declined to work on this draft. Try rewording it.")
+        raise claude.AIError("Claude declined to process this draft. Revise it and try again.")
     if resp.stop_reason == "max_tokens" or resp.parsed_output is None:
-        raise claude.AIError("Claude's answer was cut off. Try a shorter draft.")
+        raise claude.AIError("The response was incomplete. Try a shorter draft.")
     return resp.parsed_output, claude.billed_input_tokens(resp.usage), resp.usage.output_tokens
 
 def post_assist(account: Account, draft: dict, instructions: str | None, user_email: str | None, attachment: dict | None = None, focus: list[str] | None = None) -> AIRun:
     if not claude.configured():
-        raise claude.AIError("Claude isn't connected yet: add ANTHROPIC_API_KEY to server/.env and restart the backend.")
+        raise claude.not_configured()
     if not (draft.get("caption") or "").strip():
-        raise claude.AIError("Write some post text first, then analyse it.")
+        raise claude.AIError("Enter post text before running an analysis.")
     if post_assist_runs_today(account) >= POST_ASSIST_DAILY_LIMIT:
-        raise claude.AIError(f"The limit of {POST_ASSIST_DAILY_LIMIT} analyses per account in 24 hours has been reached. This protects the budget.")
+        raise claude.AIError(f"Daily limit reached: {POST_ASSIST_DAILY_LIMIT} analyses per account in 24 hours.")
     run = AIRun.objects.create(
         account=account, kind="post_assist", focus=(instructions or ", ".join(focus or []))[:300] or None, status="running", model=CLAUDE_MODEL, created_by=user_email
     )

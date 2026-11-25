@@ -10,6 +10,7 @@ from core.auth.permissions import check_account, require
 from core.common.timeutil import as_utc, now_utc
 from core.models import SuggestionDecision
 from core.schemas.analytics import DecisionIn
+from core.services import suggestion_decisions
 
 LATER_DAYS = 7  # "Later" hides an item for a week, then it comes back
 
@@ -30,10 +31,9 @@ def decisions(request):
     if request.method == "GET":
         account_id = int_param(request, "account_id", required=True)
         check_account(user, account_id)
-        # A "Later" whose week is up counts as no decision again
-        rows = [d for d in SuggestionDecision.objects.filter(account_id=account_id)
-                if not (d.status == "later" and d.until and as_utc(d.until) <= now_utc())]
-        return Response([_out(d) for d in rows])
+        # Expired "Later", old "Done"/"Dismissed" and decisions on replaced Claude runs are removed first
+        suggestion_decisions.tidy(account_id)
+        return Response([_out(d) for d in SuggestionDecision.objects.filter(account_id=account_id)])
 
     require(user, "editor")
     body = parse(DecisionIn, request.data)

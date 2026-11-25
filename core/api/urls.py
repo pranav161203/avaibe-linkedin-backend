@@ -8,6 +8,7 @@ from core.api.views import (
     analytics,
     auth,
     calendar,
+    companies,
     decisions,
     docs,
     health,
@@ -28,8 +29,16 @@ urlpatterns = [
     # sign-in
     path("auth/me", auth.me),
     path("auth/login", auth.login),
-    path("auth/callback", auth.callback),
+    path("auth/refresh", auth.refresh),
     path("auth/logout", auth.logout),
+    path("auth/password", auth.change_password),
+    path("auth/invitation", auth.invitation),
+    path("auth/signup", auth.signup),
+    path("auth/microsoft", auth.microsoft_login),
+    path("auth/callback", auth.callback),  # must match the redirect URI registered with Microsoft
+    # companies (super admins)
+    path("companies", companies.companies),
+    path("companies/<int:company_id>", companies.company_detail),
     # accounts
     path("accounts", accounts.accounts),
     path("accounts/<int:account_id>", accounts.account_detail),
@@ -102,4 +111,6 @@ urlpatterns = [
     path("team", team.members),
     path("team/default-account/set", team.set_default_account),
     path("team/<int:user_id>", team.member_detail),
+    path("team/invitations/<int:invitation_id>", team.invitation_detail),
+    path("team/invitations/<int:invitation_id>/renew", team.invitation_renew),
 ]

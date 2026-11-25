@@ -6,6 +6,9 @@ psycopg[binary]>=3.3
 python-dotenv>=1.2
 httpx>=0.28
 cryptography>=50
+# Sign-in: signed access tokens (JWT) and Argon2id password hashing
+PyJWT>=2.10
+argon2-cffi>=23.1
 msal>=1.39
 pydantic>=2.14,<3
 # zoneinfo on Windows has no system time-zone database; tzdata supplies Asia/Dubai, Asia/Kolkata, Europe/London

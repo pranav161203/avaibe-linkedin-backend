@@ -64,9 +64,9 @@ def _apply(x: Lead, body: LeadIn, user) -> None:
     if body.post_id is not None:
         post = Post.objects.filter(id=body.post_id).first()
         if not post or post.account_id not in allowed:
-            fail(422, "That post isn't one you can see")
+            fail(422, "Post not found")
     if body.via_account_id is not None and body.via_account_id not in allowed:
-        fail(422, "That profile isn't one you can see")
+        fail(422, "Profile not found")
     for k, v in body.model_dump(exclude={"account_id"}).items():
         setattr(x, k, v)
     if x.replied_at is not None:
@@ -110,7 +110,7 @@ def lead_detail(request, lead_id: int):
         return Response(status=NO_CONTENT)
     body = parse(LeadIn, request.data)
     if body.account_id != x.account_id:
-        fail(422, "A lead can't be moved to another account")
+        fail(422, "Leads cannot be moved to another account")
     _apply(x, body, user)
     x.save()
     return Response(_out(Lead.objects.select_related("post", "via_account").get(id=x.id)))

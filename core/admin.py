@@ -1,4 +1,4 @@
-"""Django admin: browse and fix data without building screens. Access is limited to the Admin role."""
+"""Django admin: browse and fix data without building screens. Access is limited to super admins."""
 
 from django.contrib import admin
 
@@ -6,6 +6,9 @@ from core.models import (
     Account,
     AIRun,
     AppSetting,
+    AuthSession,
+    Company,
+    Invitation,
     LinkedInConnection,
     PageAudience,
     PlannedPost,
@@ -18,8 +21,8 @@ from core.models import (
 
 @admin.register(Account)
 class AccountAdmin(admin.ModelAdmin):
-    list_display = ("name", "kind", "is_test", "linkedin_url", "created_at")
-    list_filter = ("kind", "is_test")
+    list_display = ("name", "company", "kind", "is_test", "linkedin_url", "created_at")
+    list_filter = ("company", "kind", "is_test")
     search_fields = ("name", "linkedin_url")
 
 
@@ -68,11 +71,44 @@ class LinkedInConnectionAdmin(admin.ModelAdmin):
 
 @admin.register(User)
 class UserAdmin(admin.ModelAdmin):
-    list_display = ("email", "name", "role", "can_switch_accounts", "is_active", "last_login")
-    list_filter = ("role", "is_active", "can_switch_accounts")
+    list_display = ("email", "name", "company", "role", "can_switch_accounts", "is_active", "last_login")
+    list_filter = ("role", "is_active", "can_switch_accounts", "company")
     search_fields = ("email", "name")
-    exclude = ("password",)
-    readonly_fields = ("last_login",)
+    exclude = ("password",)  # hashes only; passwords are set by the person, never here
+    readonly_fields = ("last_login", "created_at", "created_by", "updated_at", "updated_by")
+
+
+@admin.register(Company)
+class CompanyAdmin(admin.ModelAdmin):
+    list_display = ("name", "slug", "country", "is_active", "created_at", "created_by")
+    list_filter = ("is_active", "country")
+    search_fields = ("name", "slug")
+    readonly_fields = ("created_at", "created_by", "updated_at", "updated_by")
+
+
+class ReadOnlyAdmin(admin.ModelAdmin):
+    """Sign-in records: look, don't edit (token hashes are useless to copy, but editing them makes no sense)."""
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(AuthSession)
+class AuthSessionAdmin(ReadOnlyAdmin):
+    list_display = ("user", "method", "created_at", "last_used_at", "expires_at", "revoked_at", "revoked_reason")
+    list_filter = ("method", "revoked_reason")
+    search_fields = ("user__email",)
+
+
+@admin.register(Invitation)
+class InvitationAdmin(ReadOnlyAdmin):
+    list_display = ("email", "company", "role", "invited_by", "created_at", "expires_at", "accepted_at", "revoked_at")
+    list_filter = ("role", "company")
+    search_fields = ("email",)
+    exclude = ("token_hash",)
 
 
 @admin.register(AIRun)

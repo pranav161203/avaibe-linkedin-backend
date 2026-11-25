@@ -7,8 +7,9 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from rest_framework.test import APIClient
 
-from core.models import Account, KnowledgeChunk, KnowledgeSource
+from core.models import Account, Company, KnowledgeChunk, KnowledgeSource
 from core.services import knowledge
+from core.tests.factories import sign_in
 
 FAQ = """# Services
 
@@ -57,12 +58,13 @@ class ChunkingTests(TestCase):
         with self.assertRaises(knowledge.KnowledgeError):
             knowledge.read_file("photo.png", b"x")
         with self.assertRaises(knowledge.KnowledgeError):
-            knowledge.add_source("Empty", "   ", None)
+            knowledge.add_source("Empty", "   ", None, None)
 
 
 class KnowledgeApiTests(TestCase):
     def setUp(self):
-        self.acc = Account.objects.create(name="AVAIBE", kind="company")
+        self.company = Company.objects.get_or_create(slug="avaibe", defaults={"name": "AVAIBE"})[0]
+        self.acc = Account.objects.create(name="AVAIBE", kind="company", company=self.company)
         self.client = APIClient()
         self.local = mock.patch("core.auth.authentication.auth_enabled", return_value=False)
         self.local.start()
@@ -96,15 +98,16 @@ class KnowledgeApiTests(TestCase):
     def test_viewers_cannot_change_it(self):
         from core.models import User
 
-        KnowledgeSource.objects.create(title="x", content="y", chars=1)
-        viewer = User.objects.create_user("v@example.com", role="viewer")
-        with mock.patch("core.auth.authentication.auth_enabled", return_value=True),                 mock.patch("core.auth.permissions.default_account_id", return_value=self.acc.id):
-            self.client.force_login(viewer)
+        KnowledgeSource.objects.create(title="x", content="y", chars=1, company=self.company)
+        viewer = User.objects.create_user("v@example.com", role="viewer", company=self.company)
+        Company.objects.filter(id=self.company.id).update(default_account=self.acc)  # viewers only see the default
+        with mock.patch("core.auth.authentication.auth_enabled", return_value=True):
+            sign_in(self.client, viewer)
             self.assertEqual(self.client.get(f"/api/knowledge?account_id={self.acc.id}").status_code, 200)
             self.assertEqual(self.client.post("/api/knowledge", {"title": "a", "content": "b"}, format="json").status_code, 403)
 
     def test_applies_to_keeps_pages_apart(self):
-        other = Account.objects.create(name="Sister brand", kind="company")
+        other = Account.objects.create(name="Sister brand", kind="company", company=self.company)
         shared = self.client.post("/api/knowledge", {"title": "Company-wide", "content": "We build LMS platforms."}, format="json").json()
         own = self.client.post("/api/knowledge", {"title": "Sister only", "content": "Sister brand sells LMS hardware.", "account_ids": [other.id]}, format="json").json()
         self.assertEqual((shared["account_ids"], own["account_ids"]), ([], [other.id]))
@@ -123,14 +126,41 @@ class KnowledgeApiTests(TestCase):
     def test_people_only_see_and_change_their_accounts(self):
         from core.models import User
 
-        other = Account.objects.create(name="Sister brand", kind="company")
-        own = KnowledgeSource.objects.create(title="Sister only", content="x", chars=1)
+        other = Account.objects.create(name="Sister brand", kind="company", company=self.company)
+        own = KnowledgeSource.objects.create(title="Sister only", content="x", chars=1, company=self.company)
         own.accounts.set([other])
-        editor = User.objects.create_user("e@example.com", role="editor")  # no account switching: default account only
+        editor = User.objects.create_user("e@example.com", role="editor", company=self.company)  # no account switching: default account only
         with mock.patch("core.auth.authentication.auth_enabled", return_value=True), \
                 mock.patch("core.auth.permissions.default_account_id", return_value=self.acc.id):
-            self.client.force_login(editor)
+            sign_in(self.client, editor)
             self.assertEqual(self.client.get(f"/api/knowledge/{own.id}").status_code, 404)
             self.assertEqual(self.client.delete(f"/api/knowledge/{own.id}").status_code, 404)
             r = self.client.post("/api/knowledge", {"title": "a", "content": "b", "account_ids": [other.id]}, format="json")
             self.assertEqual(r.status_code, 404)
+
+
+class KnowledgeCompanyTests(TestCase):
+    """Two companies never see each other's knowledge, even "company-wide" sources."""
+
+    def test_company_wide_means_this_company_only(self):
+        a = Company.objects.create(name="A", slug="a")
+        b = Company.objects.create(name="B", slug="b")
+        acc_a = Account.objects.create(name="A page", kind="company", company=a)
+        acc_b = Account.objects.create(name="B page", kind="company", company=b)
+        knowledge.add_source("A facts", "A builds LMS platforms for schools.", None, a.id)
+        knowledge.add_source("B facts", "B sells LMS hardware.", None, b.id)
+        self.assertNotIn("hardware", knowledge.context_block("LMS", acc_a.id))
+        self.assertIn("hardware", knowledge.context_block("LMS", acc_b.id))
+        with self.assertRaises(knowledge.KnowledgeError):  # can't point A's source at B's account
+            knowledge.add_source("Mixed", "text", None, a.id, account_ids=[acc_b.id])
+
+        from core.models import User
+
+        admin_b = User.objects.create_user("admin@b.example", role="admin", company=b)
+        c = sign_in(APIClient(), admin_b)
+        with mock.patch("core.auth.authentication.auth_enabled", return_value=True):
+            src_a = KnowledgeSource.objects.get(title="A facts")
+            self.assertEqual(c.get(f"/api/knowledge/{src_a.id}").status_code, 404)
+            self.assertEqual(c.get(f"/api/knowledge?account_id={acc_a.id}").status_code, 404)
+            titles = {s["title"] for s in c.get(f"/api/knowledge?account_id={acc_b.id}").json()["sources"]}
+            self.assertEqual(titles, {"B facts"})

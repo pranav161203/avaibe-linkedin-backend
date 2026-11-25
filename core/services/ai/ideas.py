@@ -47,6 +47,10 @@ class Idea(BaseModel):
     boost: str = Field(description="How it can increase relevant outreach, leads or brand strength, and the mechanism")
     risk: str = Field(description="How it could LOWER outreach or backfire, honestly")
     confidence: Literal["low", "medium", "high"]
+    confidence_pct: int | None = Field(
+        default=None, ge=0, le=100,
+        description="Your estimate, 0-100, that this idea works as described, grounded in the evidence given (small samples mean lower)",
+    )
     confidence_reason: str
     effort: Literal["low", "medium", "high"]
     measure: Measure
@@ -171,9 +175,9 @@ def call_claude(system: str, prompt: str) -> tuple[IdeasResult, int, int]:
         )
 
     if resp.stop_reason == "refusal":
-        raise claude.AIError("Claude declined this request. Try rephrasing the focus.")
+        raise claude.AIError("Claude declined this request. Rephrase the focus and try again.")
     if resp.stop_reason == "max_tokens" or resp.parsed_output is None:
-        raise claude.AIError("Claude's answer was cut off. Try again with a narrower focus.")
+        raise claude.AIError("The response was incomplete. Try again with a narrower focus.")
     return resp.parsed_output, resp.usage.input_tokens, resp.usage.output_tokens
 
 def runs_today(account: Account) -> int:
@@ -186,14 +190,14 @@ def running(account: Account) -> AIRun | None:
 
 def generate_ideas(account: Account, focus: str | None, user_email: str | None) -> AIRun:
     if not claude.configured():
-        raise claude.AIError("Claude isn't connected yet: add ANTHROPIC_API_KEY to server/.env and restart the backend.")
+        raise claude.not_configured()
 
     # Claim the account's single run slot. The row lock serialises two people clicking at the same moment
     # (Postgres); the check is cheap and the lock is released before the slow Claude call.
     with transaction.atomic():
         Account.objects.select_for_update().filter(id=account.id).first()
         if running(account):
-            raise claude.AIError("Claude is already generating ideas for this account. They'll appear here shortly, no need to click again.")
+            raise claude.AIError("Ideas are already being generated for this account and will appear shortly.")
         if runs_today(account) >= DAILY_RUN_LIMIT:
             raise claude.AIError(
                 f"The limit of {DAILY_RUN_LIMIT} idea runs per account in 24 hours has been reached. "

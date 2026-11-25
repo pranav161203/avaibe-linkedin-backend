@@ -7,7 +7,7 @@ from rest_framework.response import Response
 
 from core.api.errors import fail
 from core.api.params import int_param, parse
-from core.auth.permissions import check_account, require
+from core.auth.permissions import check_account, for_viewer, require
 from core.common.timeutil import as_utc
 from core.integrations import claude
 from core.models import Account, AIRun, PlannedPost
@@ -61,7 +61,7 @@ def ideas(request):
     try:
         run = ai_ideas.generate_ideas(account, focus, None if user.dev else user.email)
     except claude.AIError as e:
-        fail(400, str(e))
+        fail(400, for_viewer(user, str(e), e.owner_detail))
     return Response(_run_out(run), status=201)
 
 
@@ -91,7 +91,7 @@ def brand_trends(request):
     try:
         run = ai_trends.find_trends(account, None if user.dev else user.email)
     except claude.AIError as e:
-        fail(400, str(e))
+        fail(400, for_viewer(user, str(e), e.owner_detail))
     return Response(_run_out(run), status=201)
 
 
@@ -110,7 +110,7 @@ def idea_to_draft(request, run_id: int, index: int):
     idea = items[index]
     caption = (idea.get("draft_caption") or "").strip()
     if not caption:
-        fail(400, "This idea has no draft caption")
+        fail(400, "This idea has no draft text")
     goal = {"leads": "sales", "sales": "sales", "brand": "brand"}.get(idea.get("type") or "", "engagement")  # Leads isn't a post goal: it counts as Sales
     p = PlannedPost.objects.create(
         account_id=run.account_id,
@@ -145,7 +145,7 @@ def post_assist(request):
         attachment = _attachment(request)
         run = ai_assist.post_assist(account, draft, (body.instructions or "").strip() or None, None if user.dev else user.email, attachment, list(dict.fromkeys(body.focus)))
     except claude.AIError as e:
-        fail(400, str(e))
+        fail(400, for_viewer(user, str(e), e.owner_detail))
     return Response(_run_out(run), status=201)
 
 
@@ -174,7 +174,7 @@ def post_chat(request):
         attachment = _attachment(request)
         run = ai_chat.post_chat(account, draft, history, None if user.dev else user.email, attachment, body.web_search)
     except claude.AIError as e:
-        fail(400, str(e))
+        fail(400, for_viewer(user, str(e), e.owner_detail))
     return Response(_run_out(run), status=201)
 
 
@@ -215,7 +215,7 @@ def compare_posts(request):
     check_account(user, account.id)
     posts = list(Post.objects.filter(id__in=body.post_ids, account=account))
     if len(posts) != len(set(body.post_ids)):
-        fail(404, "Some of these posts weren't found in this account")
+        fail(404, "One or more posts were not found in this account")
     snaps = {s.post_id: s for s in Snapshot.objects.filter(post__in=posts, checkpoint=body.checkpoint)}
     peers = [s.impressions for s in Snapshot.objects.filter(post__account=account, checkpoint=body.checkpoint, impressions__isnull=False)]
     typical = median(peers) if len(peers) >= 5 else None
@@ -238,5 +238,5 @@ def compare_posts(request):
     try:
         run = ai_compare.compare_posts(account, data, body.checkpoint, typical, None if user.dev else user.email)
     except claude.AIError as e:
-        fail(400, str(e))
+        fail(400, for_viewer(user, str(e), e.owner_detail))
     return Response(_run_out(run), status=201)

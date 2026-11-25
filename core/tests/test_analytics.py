@@ -90,18 +90,20 @@ class SuggestionDecisionTests(TestCase):
         from datetime import timedelta
 
         from core.common.timeutil import now_utc
-        from core.models import SuggestionDecision
+        from core.models import AIRun, SuggestionDecision
 
+        run = AIRun.objects.create(account=self.acc, kind="ideas", model="m")  # decisions on Claude ideas need their run
+        idea = f"ai:{run.id}:2"
         with mock.patch("core.auth.authentication.auth_enabled", return_value=False):
             self.assertEqual(self._put("rule:tag-imported", "doing").status_code, 422)  # no "In progress" any more
             self.assertEqual(self._put("rule:tag-imported", "later").status_code, 200)
             self.assertEqual(self._put("rule:tag-imported", "done").json()["status"], "done")  # same row updated
             self.assertEqual(SuggestionDecision.objects.count(), 1)
-            self.assertEqual(self._put("ai:1:2", "later").status_code, 200)
+            self.assertEqual(self._put(idea, "later").status_code, 200)
             keys = {d["key"] for d in self.client.get(f"/api/suggestions/decisions?account_id={self.acc.id}").json()}
-            self.assertEqual(keys, {"rule:tag-imported", "ai:1:2"})
+            self.assertEqual(keys, {"rule:tag-imported", idea})
 
-            SuggestionDecision.objects.filter(key="ai:1:2").update(until=now_utc() - timedelta(minutes=1))
+            SuggestionDecision.objects.filter(key=idea).update(until=now_utc() - timedelta(minutes=1))
             keys = {d["key"] for d in self.client.get(f"/api/suggestions/decisions?account_id={self.acc.id}").json()}
             self.assertEqual(keys, {"rule:tag-imported"})  # the week is up: back in the list
 
@@ -200,3 +202,33 @@ class TimingModelTests(TestCase):
         helps_noise = sum(backtest(self._posts(False, s))["verdict"] == "helps" for s in range(1, 11))
         self.assertGreaterEqual(helps_real, 7)
         self.assertLessEqual(helps_noise, 1)
+
+
+class DecisionTidyTests(TestCase):
+    """Decisions don't pile up: old Done / Dismissed, expired Later and decisions on replaced Claude runs are removed."""
+
+    def test_tidy(self):
+        from datetime import timedelta
+
+        from core.common.timeutil import now_utc
+        from core.models import Account, AIRun, SuggestionDecision
+        from core.services import suggestion_decisions
+
+        acc = Account.objects.create(name="AVAIBE", kind="company")
+        old_run = AIRun.objects.create(account=acc, kind="ideas", model="m")
+        new_run = AIRun.objects.create(account=acc, kind="ideas", model="m")
+        now = now_utc()
+        keep = [
+            SuggestionDecision.objects.create(account=acc, key="rule:a", status="done"),
+            SuggestionDecision.objects.create(account=acc, key="rule:b", status="dismissed"),
+            SuggestionDecision.objects.create(account=acc, key="rule:c", status="later", until=now + timedelta(days=3)),
+            SuggestionDecision.objects.create(account=acc, key=f"ai:{new_run.id}:0", status="done"),
+        ]
+        gone = [
+            SuggestionDecision.objects.create(account=acc, key="rule:d", status="later", until=now - timedelta(days=1)),
+            SuggestionDecision.objects.create(account=acc, key="rule:e", status="done"),
+            SuggestionDecision.objects.create(account=acc, key=f"ai:{old_run.id}:0", status="dismissed"),
+        ]
+        SuggestionDecision.objects.filter(id=gone[1].id).update(updated_at=now - timedelta(days=suggestion_decisions.DONE_DAYS + 1))
+        self.assertEqual(suggestion_decisions.tidy(acc.id), 3)
+        self.assertEqual(set(SuggestionDecision.objects.values_list("id", flat=True)), {d.id for d in keep})

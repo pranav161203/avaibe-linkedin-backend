@@ -124,17 +124,19 @@ def publish(planned_id: int) -> PlannedPost:
         raise ValueError(f"Post is '{p.status if p else 'missing'}', only approved posts can be published")
     p = PlannedPost.objects.get(id=planned_id)
     if p.format not in AUTO_PUBLISH_FORMATS:
-        return _fail(p, "The app can't publish this format yet. Post it on LinkedIn by hand, then use Mark as posted.")
+        return _fail(p, "This format cannot be published automatically. Post it manually on LinkedIn, then mark it as posted.")
 
     conn = LinkedInConnection.objects.filter(account_id=p.account_id).first()
     if conn is None:
-        return _fail(p, "No LinkedIn profile is connected to this account. Connect one on the LinkedIn page.")
+        return _fail(p, "No LinkedIn profile is connected to this account. Connect one under LinkedIn connections.")
     if as_utc(conn.expires_at) <= now_utc():
-        return _fail(p, "The LinkedIn connection has expired. Reconnect on the LinkedIn page, then retry.")
+        return _fail(p, "The LinkedIn connection has expired. Reconnect under LinkedIn connections and try again.")
     try:
         token = decrypt(conn.access_token_enc)
     except TokenKeyError as e:
-        return _fail(p, str(e))
+        # Stored on the post and seen by everyone: keep setup detail (the key name) in the server log only
+        log.error("Publishing post %s: %s", p.id, e)
+        return _fail(p, "Publishing failed due to a configuration issue. Contact the platform owner.")
 
     # Image upload happens first; nothing is public until create_post succeeds
     image_urn = None
@@ -146,7 +148,7 @@ def publish(planned_id: int) -> PlannedPost:
     except httpx.HTTPError:
         return _busy(p, UNREACHABLE_MSG)
     except (li.LinkedInError, OSError) as e:
-        return _fail(p, f"Image upload failed, nothing was posted. {e}")
+        return _fail(p, f"Image upload failed. Nothing was posted. {e}")
 
     try:
         urn = li.create_post(token, conn.member_urn, p.caption, p.visibility, image_urn, p.image_alt)
@@ -155,7 +157,7 @@ def publish(planned_id: int) -> PlannedPost:
             return _busy(p, BUSY_MSG, e.retry_after, e.status == 429)
         return _uncertain(p, f"LinkedIn was overloaded while posting (HTTP {e.status}).")
     except li.LinkedInError as e:
-        return _fail(p, f"LinkedIn rejected the post, nothing was posted. {e.message} (HTTP {e.status})")
+        return _fail(p, f"LinkedIn rejected the post. Nothing was posted. {e.message} (HTTP {e.status})")
     except (httpx.ConnectError, httpx.ConnectTimeout):
         # The request never reached LinkedIn, so nothing can have been posted
         return _busy(p, UNREACHABLE_MSG)

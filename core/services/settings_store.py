@@ -100,7 +100,7 @@ class SegmentsIn(BaseModel):
     @classmethod
     def _items(cls, v: list[str]) -> list[str]:
         if any(len(s) > 100 for s in v):
-            raise ValueError("each entry must be 100 characters or fewer")
+            raise ValueError("Each entry must be 100 characters or fewer")
         return _clean(v)
 
     @model_validator(mode="after")
@@ -110,7 +110,7 @@ class SegmentsIn(BaseModel):
         if not self.education_industry:
             raise ValueError("Add at least one education keyword")
         if not self.decision_seniority and not self.decision_titles:
-            raise ValueError("Add at least one decision-maker seniority or job title keyword")
+            raise ValueError("Add at least one decision-maker seniority or job-title keyword")
         return self
 
 
@@ -126,7 +126,7 @@ class PerformanceIn(BaseModel):
     @model_validator(mode="after")
     def _descending(self):
         if not (self.cut_high > self.cut_above > self.cut_average > self.cut_below):
-            raise ValueError("Cut-offs must decrease: High > Above average > Average > Below average")
+            raise ValueError("Thresholds must decrease: High performer > Above average > Average > Below average")
         return self
 
 

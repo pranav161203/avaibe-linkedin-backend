@@ -40,3 +40,13 @@ def content_file(posts: list[list]) -> bytes:
         ],
         "All posts": [["Engagement metrics for individual posts."], POST_HEADER, *posts],
     })
+
+
+def sign_in(client, user):
+    """Sign a test client in the way the app does: a session plus the access-token cookie."""
+    from core.auth.cookies import ACCESS_COOKIE
+    from core.services.auth import tokens
+
+    issued = tokens.start_session(user, "password")
+    client.cookies[ACCESS_COOKIE] = issued.access
+    return client

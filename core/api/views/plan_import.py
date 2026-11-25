@@ -35,9 +35,9 @@ def import_plan(request):
     check_account(user, account_id)
     upload = request.FILES.get("file")
     if not upload:
-        fail(400, "Choose a file to import")
+        fail(400, "Select a file to import")
     if upload.size > plan_excel.MAX_BYTES:
-        fail(400, "The file is over 5 MB. Split it into smaller files.")
+        fail(400, "Files must be 5 MB or smaller. Split the file and try again.")
     confirm = str(request.query_params.get("confirm", "")).lower() in {"1", "true", "yes"}
 
     try:
@@ -45,7 +45,7 @@ def import_plan(request):
     except plan_excel.PlanFileError as e:
         fail(400, str(e))
     if not results:
-        fail(400, "No posts found. Fill the Posts sheet from row 2 down, one post per row.")
+        fail(400, "No posts found. Enter one post per row in the Posts sheet, starting at row 2.")
 
     created = plan_excel.save_drafts(ready) if confirm else []
     return Response(

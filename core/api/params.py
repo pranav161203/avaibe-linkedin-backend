@@ -21,15 +21,15 @@ def int_param(request, name: str, default: int | None = None, required: bool = F
     raw = request.query_params.get(name)
     if raw in (None, ""):
         if required:
-            fail(422, f"Missing query parameter '{name}'")
+            fail(422, f"Missing required parameter: {name}")
         return default
     try:
         return int(raw)
     except ValueError:
-        fail(422, f"'{name}' must be a number")
+        fail(422, f"{name} must be a number")
 
 def choice_param(request, name: str, options: set[str] | list[str], default: str) -> str:
     v = request.query_params.get(name, default)
     if v not in options:
-        fail(422, f"'{name}' must be one of {sorted(options)}")
+        fail(422, f"{name} must be one of: {', '.join(sorted(options))}")
     return v

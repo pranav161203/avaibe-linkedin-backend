@@ -23,7 +23,7 @@ def _get_post(post_id: int, user) -> Post:
 
 def _checkpoint(cp: str) -> str:
     if cp not in CHECKPOINT_HOURS:
-        fail(422, f"checkpoint must be one of {list(CHECKPOINT_HOURS)}")
+        fail(422, f"Checkpoint must be one of: {', '.join(str(h) for h in CHECKPOINT_HOURS)}")
     return cp
 
 
@@ -53,7 +53,7 @@ def posts(request):
     # each post's OWN account as the baseline.
     metric = request.query_params.get("metric", "impressions")
     if metric not in analytics.ALL_METRICS:
-        fail(400, f"Unknown metric '{metric}'")
+        fail(400, f"Unknown metric: {metric}")
     checkpoint = choice_param(request, "checkpoint", CHECKPOINT_Q, "24h")
     fmt = request.query_params.get("format") or None
     account_id = int_param(request, "account_id")
@@ -141,7 +141,7 @@ def audience(request, post_id: int):
     for dim in {r.dimension for r in body.rows}:
         total = sum(r.pct for r in body.rows if r.dimension == dim)
         if total > 100.5:
-            fail(400, f"{dim} percentages add up to {total:.1f}%, more than 100%")
+            fail(400, f"{dim} percentages total {total:.1f}%, which exceeds 100%")
     captured = body.captured_at or now_utc()
     with transaction.atomic():
         PostAudience.objects.filter(post=p).delete()
@@ -157,7 +157,7 @@ def classification(request, post_id: int):
     checkpoint = choice_param(request, "checkpoint", CHECKPOINT_Q, "24h")
     metric = request.query_params.get("metric", "impressions")
     if metric not in analytics.ALL_METRICS:
-        fail(400, f"Unknown metric '{metric}'")
+        fail(400, f"Unknown metric: {metric}")
     labels = analytics.classifications(analytics.load_posts(p.account_id), checkpoint, metric)
     return Response(labels.get(post_id) or {"label": analytics.INSUFFICIENT, "baseline": "no snapshot at checkpoint"})
 

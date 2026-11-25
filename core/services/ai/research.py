@@ -52,7 +52,7 @@ def research(account: Account, draft: dict, team_message: str | None) -> tuple[s
                 break
             messages = [messages[0], {"role": "assistant", "content": resp.content}]
     if resp.stop_reason == "refusal":
-        raise claude.AIError("Claude declined this web search. Try again with web search off.")
+        raise claude.AIError("Claude declined the web search. Try again with web search turned off.")
 
     brief_parts: list[str] = []
     sources: dict[str, str] = {}

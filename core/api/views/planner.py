@@ -137,7 +137,7 @@ def planned_detail(request, planned_id: int):
     p = _get(planned_id, user)
     if request.method == "DELETE":
         if p.status == "publishing":
-            fail(409, "This post is being published right now")
+            fail(409, "This post is currently being published")
         for name in (p.image_file, p.media_file):
             if name:
                 (UPLOAD_DIR / name).unlink(missing_ok=True)
@@ -147,7 +147,7 @@ def planned_detail(request, planned_id: int):
     body = parse(PlannedPostIn, request.data)
     check_account(user, body.account_id)
     if p.status not in EDITABLE:
-        fail(409, f"A post that is '{p.status}' can't be edited.")
+        fail(409, f"Posts with status '{p.status}' cannot be edited.")
     for k, v in _fields(body).items():
         setattr(p, k, v)
     # Files that don't belong to the new format are removed, so they can't be posted by mistake
@@ -169,12 +169,12 @@ def planned_image(request, planned_id: int):
     p = _get(planned_id, user)
     if request.method == "GET":
         if not p.image_file or not (UPLOAD_DIR / p.image_file).exists():
-            fail(404, "No image")
+            fail(404, "Image not found")
         return FileResponse(open(UPLOAD_DIR / p.image_file, "rb"))
 
     require(user, "editor")
     if p.status not in EDITABLE:
-        fail(409, "Un-approve the post before changing its image")
+        fail(409, "Withdraw approval before changing the image")
     if request.method == "DELETE":
         if p.image_file:
             (UPLOAD_DIR / p.image_file).unlink(missing_ok=True)
@@ -184,15 +184,15 @@ def planned_image(request, planned_id: int):
         return Response(_out(p))
 
     if p.format != "image":
-        fail(400, "Only image posts take an image")
+        fail(400, "Images can only be added to image posts")
     upload = request.FILES.get("file")
     if upload is None:
         fail(422, "Attach an image")
     ext = IMAGE_TYPES.get(upload.content_type or "")
     if not ext:
-        fail(400, "Use a JPG, PNG or GIF image")
+        fail(400, "Images must be JPG, PNG or GIF")
     if upload.size > MAX_IMAGE_BYTES:
-        fail(400, "Image is larger than 10 MB")
+        fail(400, "Images must be 10 MB or smaller")
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     if p.image_file:
         (UPLOAD_DIR / p.image_file).unlink(missing_ok=True)
@@ -213,12 +213,12 @@ def planned_media(request, planned_id: int):
     p = _get(planned_id, user)
     if request.method == "GET":
         if not p.media_file or not (UPLOAD_DIR / p.media_file).exists():
-            fail(404, "No file")
+            fail(404, "File not found")
         return FileResponse(open(UPLOAD_DIR / p.media_file, "rb"), filename=p.media_name or p.media_file)
 
     require(user, "editor")
     if p.status not in EDITABLE:
-        fail(409, "Un-approve the post before changing its file")
+        fail(409, "Withdraw approval before changing the file")
     if request.method == "DELETE":
         if p.media_file:
             (UPLOAD_DIR / p.media_file).unlink(missing_ok=True)
@@ -229,7 +229,7 @@ def planned_media(request, planned_id: int):
 
     rule = MEDIA_TYPES.get(p.format)
     if rule is None:
-        fail(400, "Only carousel and video posts take a file")
+        fail(400, "Files can only be added to carousel and video posts")
     types, max_bytes, label = rule
     upload = request.FILES.get("file")
     if upload is None:
@@ -238,7 +238,7 @@ def planned_media(request, planned_id: int):
     if not ext:
         fail(400, f"Use {label}")
     if upload.size > max_bytes:
-        fail(400, f"The file is too large: use {label}")
+        fail(400, f"The file is too large. Maximum size: {label}")
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     if p.media_file:
         (UPLOAD_DIR / p.media_file).unlink(missing_ok=True)
@@ -258,11 +258,11 @@ def mark_posted(request, planned_id: int):
     require(request.user, "editor")
     p = _get(planned_id, request.user)
     if p.status != "approved":
-        fail(409, "Publish it first (preview → Publish copies the text), then mark it as posted")
+        fail(409, "Publish the post before marking it as posted")
     body = parse(MarkPostedIn, request.data)
     m = re.search(r"activity[:-](\d{10,})", body.post_url)
     if "linkedin.com" not in body.post_url or not m:
-        fail(400, "Paste the LinkedIn link of the post (open the post on LinkedIn and copy its address)")
+        fail(400, "Enter the LinkedIn post URL")
     activity = m.group(1)
     url = f"https://www.linkedin.com/feed/update/urn:li:activity:{activity}"
     published = now_utc()
@@ -287,7 +287,7 @@ def mark_posted(request, planned_id: int):
             notes="Posted by hand from the app's publishing queue",
         )
     elif post.account_id != p.account_id:
-        fail(409, "That LinkedIn post is already tracked under another account")
+        fail(409, "This LinkedIn post is already tracked under another account")
     elif post.ref != p.ref:
         # Already tracked (e.g. from a LinkedIn export): it takes the draft's ID, so the post keeps one ID
         post.ref = p.ref
@@ -307,10 +307,10 @@ def approve(request, planned_id: int):
     require(request.user, "editor")
     p = _get(planned_id, request.user)
     if p.status not in EDITABLE:
-        fail(409, f"A post that is '{p.status}' can't be published")
+        fail(409, f"Posts with status '{p.status}' cannot be published")
     # "approved" = scheduled: the app publishes it at its time. Publishing straight away ("now") doesn't need a future time.
     if p.scheduled_at and as_utc(p.scheduled_at) <= now_utc() and not request.data.get("now"):
-        fail(400, "The scheduled time has already passed. Pick a new time, or use Publish now.")
+        fail(400, "The scheduled time has passed. Select a new time or publish now.")
     if request.data.get("now"):
         p.scheduled_at = now_utc()  # going out now, not at the planned time
     p.status = "approved"
@@ -326,7 +326,7 @@ def unapprove(request, planned_id: int):
     require(request.user, "editor")
     p = _get(planned_id, request.user)
     if p.status != "approved":
-        fail(409, f"A post that is '{p.status}' isn't scheduled")
+        fail(409, f"Posts with status '{p.status}' are not scheduled")
     _clear_approval(p)
     p.save()
     return Response(_out(p))
@@ -338,10 +338,10 @@ def publish_now(request, planned_id: int):
     require(request.user, "editor")
     p = _get(planned_id, request.user)
     if p.format not in AUTO_PUBLISH_FORMATS:
-        fail(409, "The app can't publish this format yet. Post it on LinkedIn by hand, then use Mark as posted.")
+        fail(409, "This format cannot be published automatically. Post it manually on LinkedIn, then mark it as posted.")
     if p.retry_at and as_utc(p.retry_at) > now_utc():
         # Not an error: LinkedIn asked us to wait. Hammering it would only extend the wait.
-        fail(409, f"LinkedIn is busy right now. Please try again in {_wait_text(p)}.")
+        fail(409, f"LinkedIn is temporarily unavailable. Try again in {_wait_text(p)}.")
     try:
         p = publisher.publish(planned_id)
     except ValueError as e:

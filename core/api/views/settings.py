@@ -3,7 +3,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from core.api.errors import fail
-from core.auth.permissions import require
+from core.auth.permissions import is_owner, require
 from core.conf import ANTHROPIC_API_KEY, CLAUDE_MODEL
 from core.services import settings_store
 from core.services.ai import usage as ai_usage
@@ -13,7 +13,7 @@ EDITABLE_SECTIONS = {"segments", "performance", "brand"}
 
 def _section(section: str) -> str:
     if section not in EDITABLE_SECTIONS:
-        fail(422, f"section must be one of {sorted(EDITABLE_SECTIONS)}")
+        fail(422, f"Section must be one of: {', '.join(sorted(EDITABLE_SECTIONS))}")
     return section
 
 
@@ -45,12 +45,15 @@ def reset_section(request, section: str):
 
 @api_view(["GET"])
 def claude_status(request):
-    """Whether the AI connection is configured. Never returns the key itself."""
+    """Whether the AI connection is configured. Never returns the key itself.
+    The key hint and usage (platform-wide, with cost) are for owners only."""
+    owner = is_owner(request.user)
     return Response(
         {
             "configured": bool(ANTHROPIC_API_KEY),
             "model": CLAUDE_MODEL,
-            "key_hint": f"…{ANTHROPIC_API_KEY[-4:]}" if len(ANTHROPIC_API_KEY) >= 8 else None,
-            "usage": ai_usage.usage_summary(),
+            "daily_limit_per_account": ai_usage.DAILY_RUN_LIMIT,
+            "key_hint": f"…{ANTHROPIC_API_KEY[-4:]}" if owner and len(ANTHROPIC_API_KEY) >= 8 else None,
+            "usage": ai_usage.usage_summary() if owner else None,
         }
     )

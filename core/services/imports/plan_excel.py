@@ -79,7 +79,7 @@ def _read_rows(upload) -> list[tuple[int, dict]]:
         try:
             wb = load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
         except Exception:
-            raise PlanFileError("That Excel file couldn't be opened. Save it as .xlsx and try again.")
+            raise PlanFileError("The Excel file could not be opened. Save it as .xlsx and try again.")
         ws = wb["Posts"] if "Posts" in wb.sheetnames else wb.worksheets[0]
         grid = [list(r) for r in ws.iter_rows(values_only=True)]
     elif name.endswith(".csv"):
@@ -91,13 +91,13 @@ def _read_rows(upload) -> list[tuple[int, dict]]:
                 continue
         grid = [list(r) for r in csv.reader(io.StringIO(text))]
     else:
-        raise PlanFileError("Upload the Excel template (.xlsx) or the same columns saved as .csv.")
+        raise PlanFileError("Upload the Excel template (.xlsx) or a .csv file with the same columns.")
     if not grid:
         raise PlanFileError("The file is empty.")
     header = [HEADINGS.get(str(h or "").strip().lower()) for h in grid[0]]
     missing = [c[1] for c in COLUMNS if c[2] == "Yes" and c[0] not in header]
     if missing:
-        raise PlanFileError(f"Missing column{'s' if len(missing) > 1 else ''}: {', '.join(missing)}. Use the template and keep its headings.")
+        raise PlanFileError(f"Missing column{'s' if len(missing) > 1 else ''}: {', '.join(missing)}. Use the template without changing its headings.")
     rows = []
     for i, values in enumerate(grid[1:], start=2):
         row = {k: v for k, v in zip(header, values) if k}
@@ -105,7 +105,7 @@ def _read_rows(upload) -> list[tuple[int, dict]]:
             continue
         rows.append((i, row))
     if len(rows) > MAX_ROWS:
-        raise PlanFileError(f"The file has {len(rows)} posts; the limit is {MAX_ROWS} per file. Split it into smaller files.")
+        raise PlanFileError(f"The file contains {len(rows)} posts; the maximum is {MAX_ROWS} per file. Split it into smaller files.")
     return rows
 
 def _text(v) -> str:

@@ -20,7 +20,7 @@ CHECKPOINT_Q = list(CHECKPOINT_HOURS) + ["latest"]
 def _metric(request) -> str:
     metric = request.query_params.get("metric", "impressions")
     if metric not in a.ALL_METRICS:
-        fail(400, f"Unknown metric '{metric}'. Options: {sorted(a.ALL_METRICS)}")
+        fail(400, f"Unknown metric: {metric}")
     return metric
 
 
@@ -33,16 +33,16 @@ def _posts(request):
     days = int_param(request, "days")
     if days is not None:
         if not 1 <= days <= 3650:
-            fail(422, "'days' must be between 1 and 3650")
+            fail(422, "Days must be between 1 and 3650")
         since = now_utc() - timedelta(days=days)
         posts = [p for p in posts if p.published_at >= since]
     try:
         start = date.fromisoformat(request.query_params["from"]) if request.query_params.get("from") else None
         end = date.fromisoformat(request.query_params["to"]) if request.query_params.get("to") else None
     except ValueError:
-        fail(422, "'from' and 'to' must be dates like 2026-11-03")
+        fail(422, "Start and end must be dates in YYYY-MM-DD format")
     if start and end and start > end:
-        fail(422, "'from' must be on or before 'to'")
+        fail(422, "The start date must be on or before the end date")
     if start:
         posts = [p for p in posts if to_uae(p.published_at).date() >= start]
     if end:
@@ -79,7 +79,7 @@ def overview(request):
 def rankings(request):
     limit = int_param(request, "limit", 10)
     if not 1 <= limit <= 50:
-        fail(422, "'limit' must be between 1 and 50")
+        fail(422, "Limit must be between 1 and 50")
     return Response(a.rankings(_posts(request), _cp(request), _metric(request), limit))
 
 
@@ -92,7 +92,7 @@ def formats(request):
 def heatmap(request):
     fmt = request.query_params.get("format") or None
     if fmt and fmt not in FORMATS:
-        fail(400, f"Unknown format '{fmt}'")
+        fail(400, f"Unknown format: {fmt}")
     return Response(a.heatmap(_posts(request), _cp(request), _metric(request), fmt))
 
 
@@ -101,7 +101,7 @@ def timing_model(request):
     """Posting-time model v2: timing effects after removing content and page growth, with a backtest."""
     metric = request.query_params.get("metric", "impressions")
     if metric not in timing.TIMING_METRICS:
-        fail(400, f"metric must be one of {list(timing.TIMING_METRICS)}")
+        fail(400, f"Metric must be one of: {', '.join(timing.TIMING_METRICS)}")
     account_id = int_param(request, "account_id", required=True)
     check_account(request.user, account_id)
     # Always the full history: the model needs every past post, not just the chosen time range
@@ -117,7 +117,7 @@ def best_slots(request):
 def groups(request):
     by = request.query_params.get("by", "topic")
     if by not in a.GROUP_KEYS:
-        fail(400, f"'by' must be one of {sorted(a.GROUP_KEYS)}")
+        fail(400, f"Grouping must be one of: {', '.join(sorted(a.GROUP_KEYS))}")
     return Response(a.groups(_posts(request), _cp(request), by))
 
 

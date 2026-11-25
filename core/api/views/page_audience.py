@@ -61,7 +61,7 @@ def page_audience(request, account_id: int):
         try:
             as_of = date.fromisoformat(request.query_params.get("as_of", ""))
         except ValueError:
-            fail(422, "as_of must be a date (YYYY-MM-DD)")
+            fail(422, "Date must be in YYYY-MM-DD format")
         PageAudience.objects.filter(account_id=account_id, as_of=as_of, audience=request.query_params.get("audience", "")).delete()
         return Response(status=NO_CONTENT)
 
@@ -70,9 +70,9 @@ def page_audience(request, account_id: int):
     seen: set[tuple[str, str]] = set()
     for r in body.rows:
         if r.count is None and r.pct is None:
-            fail(400, f"{r.dimension} = {r.value}: give a count or a percentage")
+            fail(400, f"{r.dimension} = {r.value}: enter a count or a percentage")
         if r.count is not None and body.total is not None and r.count > body.total:
-            fail(400, f"{r.dimension} = {r.value}: count is larger than the total")
+            fail(400, f"{r.dimension} = {r.value}: count exceeds the total")
         key = (r.dimension, r.value.strip().lower())
         if key in seen:
             fail(400, f"Duplicate entry: {r.dimension} = {r.value}")

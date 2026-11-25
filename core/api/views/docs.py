@@ -25,7 +25,7 @@ def _out(kind: str, doc: AccountDoc | None) -> dict:
 def account_doc(request, account_id: int, kind: str):
     user = request.user
     if kind not in KINDS:
-        fail(404, "Unknown document")
+        fail(404, "Document not found")
     if not Account.objects.filter(id=account_id).exists():
         fail(404, "Account not found")
     check_account(user, account_id)

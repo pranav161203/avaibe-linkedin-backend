@@ -15,6 +15,11 @@ class Account(models.Model):
     linkedin_urn = models.CharField(max_length=100, null=True, blank=True)
     # For founder / personal profiles: the company page they belong to (shown together on the Dashboard)
     parent = models.ForeignKey("self", on_delete=models.SET_NULL, null=True, blank=True, related_name="profiles")
+    # The company that owns it: only that company's people see it (super admins see every company's).
+    # Empty only for rows made before companies existed and not yet assigned; only super admins see those.
+    company = models.ForeignKey(
+        "core.Company", on_delete=models.PROTECT, null=True, blank=True, related_name="accounts", db_column="company_id"
+    )
     is_test = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 

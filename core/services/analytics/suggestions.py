@@ -11,7 +11,7 @@ Effects are stated as directions with evidence, never as promised numbers.
 from statistics import median
 from typing import Any
 
-from core.common.timeutil import now_utc
+from core.common.timeutil import now_utc, slot_label
 from core.models import Post
 from core.services.analytics import performance as a
 
@@ -34,12 +34,32 @@ def _n(x: float | None) -> str:
     return "—" if x is None else f"{x:,.0f}"
 
 
-def _confidence(n: int, strong: int = 6, ok: int = 3) -> dict[str, str]:
+def _confidence(n: int, pct: int | None = None, strong: int = 6, ok: int = 3, below: bool = False) -> dict[str, Any]:
+    """Level from the number of posts; `pct` = the measured share of those posts that beat (or, with below=True, fell
+    short of) the typical post. Only measured suggestions carry a percentage."""
+    share = ""
+    if pct is not None:
+        share = f" {pct}% of them {'fell short of' if below else 'beat'} your typical post."
     if n >= strong:
-        return {"level": "high", "reason": f"Based on {n} posts. Still check it holds as more data arrives."}
-    if n >= ok:
-        return {"level": "medium", "reason": f"Based on only {n} posts: a useful signal, not proof. Treat it as a test."}
-    return {"level": "low", "reason": f"Based on {n} post{'s' if n != 1 else ''}: too few to rely on. Run it as an experiment."}
+        out = {"level": "high", "reason": f"Based on {n} posts.{share} Still check it holds as more data arrives."}
+    elif n >= ok:
+        out = {"level": "medium", "reason": f"Based on only {n} posts.{share} A useful signal, not proof: treat it as a test."}
+    else:
+        out = {"level": "low", "reason": f"Based on {n} post{'s' if n != 1 else ''}.{share} Too few to rely on: run it as an experiment."}
+    if pct is not None:
+        out["pct"] = pct
+    return out
+
+
+def _share(rows: list, metric: str, baseline: float | None, match, below: bool = False) -> int | None:
+    """Of the posts that `match`, the % above the baseline (or below it), from the account's own posts."""
+    if not baseline:
+        return None
+    vals = [v for v in (r.value(metric) for r in rows if match(r)) if v is not None]
+    if len(vals) < 3:
+        return None
+    hits = sum(1 for v in vals if (v < baseline if below else v > baseline))
+    return round(100 * hits / len(vals))
 
 
 def _count(group: dict[str, Any], has_audience: bool) -> int:
@@ -74,14 +94,14 @@ def build(posts: list[Post]) -> dict[str, Any]:
         out.append(_s(
             id="due-snapshots", category="data", priority="high",
             title=f"Record {len(due)} snapshot{'s' if len(due) != 1 else ''} before the window closes",
-            when="Today, before each one closes",
-            who="Your own tracking (affects every analysis)",
+            when="Today, before each checkpoint closes",
+            who="Internal tracking (affects all analysis)",
             why=[
                 f"{len(due)} checkpoint{'s are' if len(due) != 1 else ' is'} open now and will close when the next checkpoint arrives.",
-                "LinkedIn only shows running totals, so a missed 24h figure can never be recovered accurately.",
+                "LinkedIn reports cumulative totals only; a missed 24h figure cannot be recovered accurately.",
             ],
-            boost="Complete, same-age numbers make every comparison (best time, format, topic) more reliable, so later suggestions get better.",
-            risk="None for reach. The only cost is a few minutes of data entry.",
+            boost="Complete, same-age data improves the reliability of every comparison (timing, format, topic) and of later suggestions.",
+            risk="None. Requires a few minutes of data entry.",
             confidence={"level": "high", "reason": "This is about data completeness, not a prediction."},
             measure={"metric": "Snapshots due", "period": "Daily", "target": "Zero overdue checkpoints"},
             action={"label": "Open posts", "to": "/posts"},
@@ -90,15 +110,15 @@ def build(posts: list[Post]) -> dict[str, Any]:
     if len(rows) < a.min_history():
         out.append(_s(
             id="build-baseline", category="data", priority="high",
-            title=f"Build a baseline: get to {a.min_history()} posts with a {cp} snapshot",
+            title=f"Build a baseline of {a.min_history()} posts with a {cp} snapshot",
             when="Over the next 3–4 weeks (about 2–3 posts a week)",
             who="All target segments",
             why=[
                 f"Only {len(rows)} post{'s have' if len(rows) != 1 else ' has'} a {cp} snapshot so far.",
                 f"Performance labels and reliable comparisons need at least {a.min_history()}.",
             ],
-            boost="Unlocks performance labels, best-time and best-format evidence, so later suggestions are grounded in your own audience.",
-            risk="Posting just to fill the count can lower quality and engagement. Keep each post useful.",
+            boost="Enables performance labels and timing and format evidence based on the account's own audience.",
+            risk="Posting only to reach the count can reduce quality and engagement.",
             confidence={"level": "high", "reason": "A data requirement, not a prediction."},
             measure={"metric": f"Posts with a {cp} snapshot", "period": "Weekly", "target": f"{a.min_history()}+"},
             action={"label": "Add post", "to": "/posts/new"},
@@ -115,11 +135,11 @@ def build(posts: list[Post]) -> dict[str, Any]:
         out.append(_s(
             id="tag-imported", category="data", priority="high",
             title="Check the format and topic of imported posts",
-            when="This week, once (about 30 seconds a post)",
-            who="Your own tracking (affects format and topic analysis)",
+            when="This week (about 30 seconds per post)",
+            who="Internal tracking (affects format and topic analysis)",
             why=parts + ["Format and topic comparisons are only as good as these labels."],
-            boost="Correct labels show which formats and topics actually reach UAE decision-makers, so the next posts can follow the evidence.",
-            risk="None for reach. A wrong label would only mislead the analysis, so check rather than guess.",
+            boost="Accurate labels show which formats and topics reach UAE decision-makers.",
+            risk="None. Incorrect labels would mislead the analysis; verify rather than estimate.",
             confidence={"level": "high", "reason": "A data requirement, not a prediction."},
             measure={"metric": "Untagged posts and unconfirmed topics", "period": "This week", "target": "Zero"},
             action={"label": "Fix now", "to": "/data?tab=posts"},
@@ -135,13 +155,13 @@ def build(posts: list[Post]) -> dict[str, Any]:
             id="audience-coverage", category="data", priority="medium",
             title="Record “Who saw this post” for more posts",
             when="At the 7-day mark of each post",
-            who="UAE decision-makers and schools (to measure them at all)",
+            who="UAE decision-makers and schools",
             why=[
                 f"Only {ov['posts_with_audience']} of {ov['posts_at_checkpoint']} posts have audience data.",
-                "Without it, the app can rank posts by total views but can't tell whether UAE schools and decision-makers saw them.",
+                "Without audience data, posts can be ranked by total impressions but not by reach among UAE schools and decision-makers.",
             ],
-            boost="Lets every suggestion optimise for relevant UAE reach instead of raw views, which is the actual goal.",
-            risk="None for reach. It takes about 2 minutes per post.",
+            boost="Allows suggestions to optimise for relevant UAE reach rather than total impressions.",
+            risk="None. Requires about 2 minutes per post.",
             confidence={"level": "high", "reason": "A data requirement, not a prediction."},
             measure={"metric": "Posts with audience data", "period": "Weekly", "target": "Every post older than 7 days"},
             action={"label": "Fix now", "to": "/posts"},
@@ -158,19 +178,21 @@ def build(posts: list[Post]) -> dict[str, Any]:
         lift = best["median"] / baseline - 1
         out.append(_s(
             id="timing", category="timing", priority="medium" if lift >= 0.1 else "low",
-            title=f"Schedule your next posts on {best['day']}, {best['slot']} (UAE)",
+            title=f"Schedule upcoming posts on {best['day']}, {best['slot']} (UAE)",
             when=f"{best['day']}s, {best['slot']} UAE time",
             who="Your current audience, weighted to UAE viewers" if has_audience else "Your current audience",
             why=[
                 f"{best['posts']} posts in this slot had a median of {_n(best['median'])} {mlabel}, vs {_n(baseline)} across all posts ({_pct(lift)}).",
-                "It is the strongest slot with enough posts to compare; slots with fewer posts are ignored.",
+                "Strongest slot with sufficient posts for comparison; slots with fewer posts are excluded.",
             ],
-            boost="Posting when your audience is most active gives the post a stronger first hour, and LinkedIn tends to show early-engaging posts to more people.",
+            boost="Posting when the audience is most active strengthens early engagement, which LinkedIn tends to reward with wider distribution.",
             risk=(
-                "Putting every post in one slot can make posts compete with each other and tire your followers; "
-                "the advantage may also just be the topics posted then. Keep testing one other slot each week."
+                "Concentrating all posts in one slot can cause posts to compete and fatigue followers; "
+                "the advantage may also reflect the topics posted then. Continue testing one other slot each week."
             ),
-            confidence=_confidence(best["posts"]),
+            confidence=_confidence(best["posts"], _share(
+                rows, metric, baseline, lambda r: r.post.time_known and r.uae.strftime("%A") == best["day"] and slot_label(r.uae) == best["slot"],
+            )),
             measure={"metric": f"Median {mlabel} of the next 4 posts in this slot", "period": "4 weeks", "target": f"Above {_n(baseline)}"},
             action={"label": "See heatmap", "to": "/data?tab=timing"},
         ))
@@ -184,10 +206,10 @@ def build(posts: list[Post]) -> dict[str, Any]:
                 who="Your current audience",
                 why=[
                     f"No slot has {a.min_slot_posts()}+ posts yet, so no time can be called best.",
-                    "These two slots look promising on early, thin data: " + "; ".join(f"{c['day']} {c['slot']}: {_n(c['median'])} ({c['posts']} post{'s' if c['posts'] != 1 else ''})" for c in cells) + ".",
+                    "Early, limited data favours these two slots: " + "; ".join(f"{c['day']} {c['slot']}: {_n(c['median'])} ({c['posts']} post{'s' if c['posts'] != 1 else ''})" for c in cells) + ".",
                 ],
-                boost="Within a few weeks you get real evidence of when your audience responds, instead of generic ‘best time to post’ advice.",
-                risk="While testing, some posts will land at weaker times. Alternate the slots and keep topic and format similar, so the test is fair.",
+                boost="Within a few weeks, provides account-specific evidence of audience response by time slot.",
+                risk="Some test posts will run at weaker times. Alternate slots and keep topic and format consistent.",
                 confidence={"level": "low", "reason": "Early signal from very few posts."},
                 measure={"metric": f"Median {mlabel} per slot", "period": "3–4 weeks", "target": f"{a.min_slot_posts()} posts in each slot"},
                 action={"label": "See heatmap", "to": "/data?tab=timing"},
@@ -213,12 +235,12 @@ def build(posts: list[Post]) -> dict[str, Any]:
                 why=[
                     f"{n} {name} posts{' with audience data' if has_audience else ''} reached a median of {_n(top[fkey])} {mlabel}, vs {_n(baseline)} overall ({_pct(lift)}).",
                 ],
-                boost="Formats that already work for your audience are the quickest way to lift reach without changing topics.",
+                boost="Proven formats are the fastest way to increase reach without changing topics.",
                 risk=(
-                    "Leaning on one format can make the feed repetitive and lower engagement over time. "
-                    "Some formats (video, carousels) also take more effort, so quality may drop if rushed."
+                    "Over-reliance on one format can make the feed repetitive and reduce engagement. "
+                    "Some formats (video, carousels) require more effort; quality may suffer if rushed."
                 ),
-                confidence=_confidence(n),
+                confidence=_confidence(n, _share(rows, metric, baseline, lambda r: r.post.format == top["format"])),
                 measure={"metric": f"Median {mlabel} of the new {name} posts", "period": "4 weeks", "target": f"Above {_n(baseline)}"},
                 action={"label": "Compare formats", "to": "/data?tab=formats"},
             ))
@@ -234,13 +256,13 @@ def build(posts: list[Post]) -> dict[str, Any]:
         if lift >= 0.1:
             out.append(_s(
                 id="topic-more", category="topic", priority="medium",
-                title=f"Post more about “{best_t['key']}”, from a new angle",
+                title=f"Increase posts on “{best_t['key']}” with a new angle",
                 when="1 of your next 3 posts",
                 who="UAE schools and decision-makers" if has_audience else "Your current audience",
                 why=[f"{_count(best_t, has_audience)} posts on this topic{suffix} reached a median of {_n(best_t[gkey])} {mlabel}, vs {_n(baseline)} overall ({_pct(lift)})."],
-                boost="Topics your audience already responds to tend to keep performing, and they build recognition for what AVAIBE is known for.",
-                risk="Repeating the same angle leads to topic fatigue: reach often drops when followers feel they've seen it before. Change the angle (case study, checklist, opinion, question).",
-                confidence=_confidence(_count(best_t, has_audience)),
+                boost="Topics with proven audience response tend to keep performing and strengthen brand recognition.",
+                risk="Repeating the same angle causes topic fatigue and lower reach. Vary the angle (case study, checklist, opinion, question).",
+                confidence=_confidence(_count(best_t, has_audience), _share(rows, metric, baseline, lambda r: r.post.topic == best_t["key"])),
                 measure={"metric": f"Median {mlabel} of the next posts on this topic", "period": "4–6 weeks", "target": f"Stays above {_n(baseline)}"},
                 action={"label": "Topic analysis", "to": "/data?tab=content"},
                 topic=best_t["key"],
@@ -249,13 +271,15 @@ def build(posts: list[Post]) -> dict[str, Any]:
         if worst_t["key"] != best_t["key"] and drop <= -0.2:
             out.append(_s(
                 id="topic-rethink", category="topic", priority="low",
-                title=f"Rethink how you present “{worst_t['key']}”",
+                title=f"Revise the approach to “{worst_t['key']}”",
                 when="Before the next post on this topic",
                 who="The segment this topic is meant for",
                 why=[f"{_count(worst_t, has_audience)} posts on this topic{suffix} had a median of {_n(worst_t[gkey])} {mlabel}, vs {_n(baseline)} overall ({_pct(drop)})."],
-                boost="A sharper hook, a different format or a more UAE-specific example can turn a weak topic into a useful one.",
-                risk="Dropping the topic entirely could lose a small but valuable audience (e.g. a few decision-makers who care about it). Check who engaged before deciding.",
-                confidence=_confidence(_count(worst_t, has_audience)),
+                boost="A stronger hook, a different format or a UAE-specific example can improve an underperforming topic.",
+                risk="Dropping the topic may lose a small but valuable audience. Review who engaged before deciding.",
+                confidence=_confidence(
+                    _count(worst_t, has_audience), _share(rows, metric, baseline, lambda r: r.post.topic == worst_t["key"], below=True), below=True
+                ),
                 measure={"metric": f"{mlabel.capitalize()} of the reworked post", "period": "Next post", "target": f"Closer to {_n(baseline)}"},
                 action={"label": "Topic analysis", "to": "/data?tab=content"},
                 topic=worst_t["key"],
@@ -274,9 +298,9 @@ def build(posts: list[Post]) -> dict[str, Any]:
                 when="Posts meant to drive enquiries or website visits",
                 who="Prospects ready to act",
                 why=[f"{best_c['posts']} posts with this CTA got a median of {_n(best_c['median_clicks'])} clicks, vs {_n(overall_clicks)} overall ({_pct(lift)})."],
-                boost="Clicks move people from scrolling to visiting, which is closer to an enquiry than a like.",
-                risk="Strong ‘click here’ CTAs on every post can feel salesy and lower comments and reach. Use them on about 1 in 3 posts.",
-                confidence=_confidence(best_c["posts"]),
+                boost="Clicks indicate stronger intent than reactions and are closer to an enquiry.",
+                risk="Direct CTAs on every post can appear promotional and reduce comments and reach. Limit them to about 1 in 3 posts.",
+                confidence=_confidence(best_c["posts"], _share(rows, "clicks", overall_clicks, lambda r: r.post.cta == best_c["key"])),
                 measure={"metric": "Median clicks and click rate", "period": "4 weeks", "target": f"Above {_n(overall_clicks)} clicks"},
                 action={"label": "CTA analysis", "to": "/data?tab=content"},
             ))
@@ -287,13 +311,13 @@ def build(posts: list[Post]) -> dict[str, Any]:
     if sum(last4) < 4:
         out.append(_s(
             id="consistency", category="consistency", priority="medium",
-            title="Post at least twice a week, steadily",
+            title="Publish at least twice a week",
             when="Every week (e.g. Tuesday and Thursday)",
             who="All followers",
             why=[f"Only {sum(last4)} post{'s' if sum(last4) != 1 else ''} in the last 4 weeks; {cons['weeks_without_posts']} of the last 12 weeks had none."],
-            boost="Regular posting keeps the page in followers' feeds and builds steady reach instead of occasional spikes.",
-            risk="Posting more often with weaker content can lower average engagement and train the audience to skip. Quality first, then frequency.",
-            confidence={"level": "medium", "reason": "A widely observed pattern; confirm it with your own trend over the next month."},
+            boost="Consistent posting maintains feed visibility and builds steady reach.",
+            risk="Higher frequency with weaker content can reduce average engagement. Prioritise quality over frequency.",
+            confidence={"level": "medium", "reason": "Widely observed pattern; confirm against the account's trend over the next month."},
             measure={"metric": "Posts per week and 30-day median reach", "period": "4–6 weeks", "target": "2+ posts every week, stable or rising median"},
             action={"label": "Plan in Publishing", "to": "/publishing"},
         ))
@@ -306,8 +330,8 @@ def build(posts: list[Post]) -> dict[str, Any]:
             when="Over the next month",
             who="All followers",
             why=[f"{FORMAT_NAMES.get(dom['format'], dom['format']).capitalize()} posts produced {dom['share'] * 100:.0f}% of impressions in the last 90 days."],
-            boost="Spreading reach across formats protects the account if that one format stops working (e.g. a LinkedIn change).",
-            risk="New formats usually start weaker, so total reach may dip for a few weeks while you learn what works.",
+            boost="Diversifying formats reduces dependence on a single format if platform behaviour changes.",
+            risk="New formats typically start weaker; total reach may dip for a few weeks.",
             confidence={"level": "medium", "reason": "Concentration risk, not a performance prediction."},
             measure={"metric": "Share of impressions by format", "period": "90 days", "target": "No single format above 60%"},
             action={"label": "Consistency view", "to": "/data?tab=consistency"},
@@ -322,9 +346,9 @@ def build(posts: list[Post]) -> dict[str, Any]:
             when="This week",
             who="All target segments",
             why=["The median per post in the last 30 days is more than the trend threshold below the 30 days before."],
-            boost="Finding the cause early (topic, timing, format, fewer founder shares) stops a dip from becoming a long decline.",
-            risk="Over-reacting to a short dip can make you abandon things that work. Look at the lowest posts first and change one thing at a time.",
-            confidence={"level": "medium", "reason": "Trend over two 30-day windows; small samples can swing."},
+            boost="Identifying the cause early (topic, timing, format, founder shares) prevents a sustained decline.",
+            risk="Over-reacting to a short dip may abandon effective tactics. Review the lowest posts first and change one variable at a time.",
+            confidence={"level": "medium", "reason": "Trend across two 30-day windows; small samples can vary."},
             measure={"metric": f"30-day median {mlabel}", "period": "Next 30 days", "target": "Back to the previous level"},
             action={"label": "Lowest posts", "to": "/data?tab=rankings"},
         ))

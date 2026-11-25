@@ -20,7 +20,7 @@ from core.api.errors import NO_CONTENT, fail
 from core.api.params import int_param, parse
 from core.auth.permissions import allowed_account_ids, check_account, require
 from core.common.timeutil import as_utc
-from core.models import KnowledgeSource
+from core.models import Account, Company, KnowledgeSource
 from core.schemas.knowledge import KnowledgeIn
 from core.services import knowledge
 
@@ -58,17 +58,31 @@ def _check_targets(user, account_ids: list[int]) -> list[int]:
     return ids
 
 
+def _company(user, account_id: int | None) -> int | None:
+    """The company a new source belongs to: that of the account being worked in (checked), else the person's."""
+    if account_id is not None:
+        check_account(user, account_id)
+        return Account.objects.filter(id=account_id).values_list("company_id", flat=True).first()
+    if user.company_id is not None:
+        return user.company_id
+    # A super admin without a company: fine while there is at most one company to mean
+    ids = list(Company.objects.values_list("id", flat=True)[:2])
+    if len(ids) > 1:
+        fail(422, "Select an account")
+    return ids[0] if ids else None
+
+
 def _get(user, source_id: int, to_change: bool = False) -> KnowledgeSource:
     """A source this person may see (any of its accounts allowed, or company-wide); to change it, all of them."""
     s = KnowledgeSource.objects.prefetch_related("accounts").filter(id=source_id).first()
-    if not s:
+    if not s or not (user.is_superadmin or s.company_id == user.company_id):
         fail(404, "Source not found")
     ids = {a.id for a in s.accounts.all()}
     allowed = set(allowed_account_ids(user))
     if ids and not ids & allowed:
         fail(404, "Source not found")
     if to_change and not ids <= allowed:
-        fail(403, "This source also applies to accounts you can't use, so you can't change it")
+        fail(403, "This source applies to accounts you do not have access to and cannot be changed")
     return s
 
 
@@ -87,19 +101,21 @@ def sources(request):
     try:
         if upload:
             if upload.size > knowledge.MAX_BYTES:
-                fail(400, "The file is over 5 MB. Split it, or paste the important parts as text.")
+                fail(400, "Files must be 5 MB or smaller. Split the file or paste the relevant text.")
             raw = str(request.data.get("account_ids") or "")
             try:
                 ids = [int(x) for x in raw.split(",") if x.strip()]
             except ValueError:
-                fail(422, "account_ids must be numbers separated by commas")
+                fail(422, "Account IDs must be comma-separated numbers")
             ids = _check_targets(user, ids)
             text = knowledge.read_file(upload.name, upload.read())
             title = (request.data.get("title") or "").strip() or upload.name.rsplit(".", 1)[0]
-            s = knowledge.add_source(title, text, _email(user), file_name=upload.name, account_ids=ids)
+            company = _company(user, int_param(request, "account_id"))
+            s = knowledge.add_source(title, text, _email(user), company, file_name=upload.name, account_ids=ids)
         else:
             body = parse(KnowledgeIn, request.data)
-            s = knowledge.add_source(body.title, body.content, _email(user), account_ids=_check_targets(user, body.account_ids))
+            company = _company(user, int_param(request, "account_id"))
+            s = knowledge.add_source(body.title, body.content, _email(user), company, account_ids=_check_targets(user, body.account_ids))
     except knowledge.KnowledgeError as e:
         fail(400, str(e))
     return Response(_out(s, full=True), status=201)

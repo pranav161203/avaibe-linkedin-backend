@@ -15,7 +15,7 @@ import re
 from django.db import connection, transaction
 from django.db.models import Q, QuerySet
 
-from core.models import KnowledgeChunk, KnowledgeSource
+from core.models import Account, KnowledgeChunk, KnowledgeSource
 
 MAX_BYTES = 5 * 1024 * 1024
 MAX_CHARS = 200_000
@@ -34,14 +34,14 @@ def read_file(name: str, data: bytes) -> str:
     """The text of an uploaded file. Raises KnowledgeError with a message the team can act on."""
     lower = (name or "").lower()
     if len(data) > MAX_BYTES:
-        raise KnowledgeError("The file is over 5 MB. Split it, or paste the important parts as text.")
+        raise KnowledgeError("Files must be 5 MB or smaller. Split the file or paste the relevant text.")
     if lower.endswith((".txt", ".md")):
         for enc in ("utf-8-sig", "cp1252"):
             try:
                 return data.decode(enc)
             except UnicodeDecodeError:
                 continue
-        raise KnowledgeError("The text file couldn't be read. Save it as UTF-8 and try again.")
+        raise KnowledgeError("The text file could not be read. Save it as UTF-8 and try again.")
     if lower.endswith(".pdf"):
         from pypdf import PdfReader
 
@@ -49,9 +49,9 @@ def read_file(name: str, data: bytes) -> str:
             reader = PdfReader(io.BytesIO(data))
             text = "\n\n".join((page.extract_text() or "").strip() for page in reader.pages)
         except Exception:
-            raise KnowledgeError("That PDF couldn't be opened. If it's password-protected, remove the password first.")
+            raise KnowledgeError("The PDF could not be opened. Remove any password protection and try again.")
         if not text.strip():
-            raise KnowledgeError("No text found in this PDF. It's probably a scan (pictures of pages); paste the text instead.")
+            raise KnowledgeError("No text was found in this PDF. It may be a scanned document; paste the text instead.")
         return text
     if lower.endswith(".docx"):
         import docx
@@ -59,7 +59,7 @@ def read_file(name: str, data: bytes) -> str:
         try:
             doc = docx.Document(io.BytesIO(data))
         except Exception:
-            raise KnowledgeError("That Word file couldn't be opened. Save it as .docx and try again.")
+            raise KnowledgeError("The Word file could not be opened. Save it as .docx and try again.")
         lines = []
         for p in doc.paragraphs:
             t = p.text.strip()
@@ -74,7 +74,7 @@ def read_file(name: str, data: bytes) -> str:
             for row in table.rows:
                 lines.append(" | ".join(c.text.strip() for c in row.cells))
         return "\n".join(lines)
-    raise KnowledgeError("Upload a .txt, .md, .pdf or .docx file.")
+    raise KnowledgeError("Supported formats: .txt, .md, .pdf and .docx.")
 
 
 # ------------------------------------------------------------------ chunking
@@ -150,9 +150,9 @@ def section_count(text: str) -> int:
 def _validate(title: str, content: str) -> tuple[str, str]:
     title, content = title.strip(), clean(content)
     if not title:
-        raise KnowledgeError("Give the source a title.")
+        raise KnowledgeError("Enter a title for the source.")
     if not content:
-        raise KnowledgeError("There's no text to add.")
+        raise KnowledgeError("Enter some text to add.")
     if len(content) > MAX_CHARS:
         raise KnowledgeError(f"That's {len(content):,} characters; the limit is {MAX_CHARS:,} per source. Split it into smaller sources.")
     return title[:200], content
@@ -166,17 +166,28 @@ def _rechunk(source: KnowledgeSource) -> None:
 
 
 def for_account(account_id: int | None) -> QuerySet[KnowledgeSource]:
-    """Sources that apply to this account: company-wide ones plus the account's own (company-wide only if None)."""
-    qs = KnowledgeSource.objects.all()
+    """Sources that apply to this account: its company's company-wide ones plus the account's own.
+    Never another company's, whatever their "applies to" says."""
+    company_id = Account.objects.filter(id=account_id).values_list("company_id", flat=True).first() if account_id else None
+    qs = KnowledgeSource.objects.filter(company_id=company_id)
     cond = Q(accounts__isnull=True) if account_id is None else Q(accounts__isnull=True) | Q(accounts__id=account_id)
     return qs.filter(cond).distinct()
 
 
-def add_source(title: str, content: str, user_email: str | None, file_name: str | None = None, account_ids: list[int] | None = None) -> KnowledgeSource:
+def _same_company(company_id: int | None, account_ids: list[int] | None) -> None:
+    if account_ids and Account.objects.filter(id__in=account_ids).exclude(company_id=company_id).exists():
+        raise KnowledgeError("Sources can only apply to accounts within the same company")
+
+
+def add_source(
+    title: str, content: str, user_email: str | None, company_id: int | None,
+    file_name: str | None = None, account_ids: list[int] | None = None,
+) -> KnowledgeSource:
     title, content = _validate(title, content)
+    _same_company(company_id, account_ids)
     with transaction.atomic():
         s = KnowledgeSource.objects.create(
-            title=title, kind="file" if file_name else "text", file_name=file_name, content=content, chars=len(content),
+            company_id=company_id, title=title, kind="file" if file_name else "text", file_name=file_name, content=content, chars=len(content),
             created_by=user_email, updated_by=user_email,
         )
         s.accounts.set(account_ids or [])
@@ -186,6 +197,7 @@ def add_source(title: str, content: str, user_email: str | None, file_name: str 
 
 def update_source(source: KnowledgeSource, title: str, content: str, user_email: str | None, account_ids: list[int] | None = None) -> KnowledgeSource:
     title, content = _validate(title, content)
+    _same_company(source.company_id, account_ids)
     with transaction.atomic():
         source.title, source.content, source.chars, source.updated_by = title, content, len(content), user_email
         source.save()

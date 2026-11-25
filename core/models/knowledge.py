@@ -20,7 +20,11 @@ class KnowledgeSource(models.Model):
     file_name = models.CharField(max_length=300, null=True, blank=True)  # original name, for display only
     content = models.TextField()
     chars = models.PositiveIntegerField(default=0)
-    # Empty = applies to every account. Otherwise only Claude work for these accounts uses it.
+    # The company it belongs to; "every account" below means every account of this company, never another's
+    company = models.ForeignKey(
+        "core.Company", on_delete=models.CASCADE, null=True, blank=True, related_name="knowledge_sources", db_column="company_id"
+    )
+    # Empty = applies to every account of the company. Otherwise only Claude work for these accounts uses it.
     accounts = models.ManyToManyField(Account, blank=True, related_name="knowledge_sources")
     created_by = models.CharField(max_length=320, null=True, blank=True)
     updated_by = models.CharField(max_length=320, null=True, blank=True)

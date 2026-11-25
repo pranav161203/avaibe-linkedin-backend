@@ -111,9 +111,9 @@ def call_claude_chat(messages: list[dict]) -> tuple[ChatTurn, int, int]:
         )
 
     if resp.stop_reason == "refusal":
-        raise claude.AIError("Claude declined to continue with this. Try rewording your message.")
+        raise claude.AIError("Claude declined this request. Rephrase your message and try again.")
     if resp.stop_reason == "max_tokens" or resp.parsed_output is None:
-        raise claude.AIError("Claude's answer was cut off. Try a shorter message.")
+        raise claude.AIError("The response was incomplete. Try a shorter message.")
     return resp.parsed_output, claude.billed_input_tokens(resp.usage), resp.usage.output_tokens
 
 def post_chat(
@@ -125,15 +125,15 @@ def post_chat(
     web_search: bool = False,
 ) -> AIRun:
     if not claude.configured():
-        raise claude.AIError("Claude isn't connected yet: add ANTHROPIC_API_KEY to server/.env and restart the backend.")
+        raise claude.not_configured()
     if len(history) >= POST_CHAT_MAX_MESSAGES:
-        raise claude.AIError(f"This session has reached {POST_CHAT_MAX_MESSAGES} messages. Start a new session to keep going.")
+        raise claude.AIError(f"This session has reached its limit of {POST_CHAT_MAX_MESSAGES} messages. Start a new session to continue.")
     if history and history[-1]["role"] != "user":
         # The page's history ends with the team's newest message (it starts with the AI's opening questions,
         # or with the team's own question asked from the Dashboard)
-        raise claude.AIError("Send a message first.")
+        raise claude.AIError("Enter a message.")
     if post_chat_messages_today(account) >= POST_CHAT_DAILY_LIMIT:
-        raise claude.AIError(f"The limit of {POST_CHAT_DAILY_LIMIT} AI chat messages per account in 24 hours has been reached. This protects the budget.")
+        raise claude.AIError(f"Daily limit reached: {POST_CHAT_DAILY_LIMIT} AI chat messages per account in 24 hours.")
     run = AIRun.objects.create(account=account, kind="post_chat", status="running", model=CLAUDE_MODEL, created_by=user_email)
     brief, sources, searches = None, [], 0
     rin = rout = 0

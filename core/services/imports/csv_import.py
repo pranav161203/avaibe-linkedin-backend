@@ -54,7 +54,7 @@ def import_row(row: dict, account_id: int) -> tuple[str, bool]:
     )
     post = Post.objects.filter(post_url=post_in.post_url).first() if post_in.post_url else None
     if post and post.account_id != account_id:
-        raise ValueError("post_url belongs to a different account")
+        raise ValueError("This post URL belongs to a different account")
     data = post_in.model_dump()
     data["time_known"] = True  # the CSV template always carries a time
     if post is None:

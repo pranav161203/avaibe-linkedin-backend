@@ -23,6 +23,7 @@ from core.services.ai.post_assist import (
 class CompareReason(BaseModel):
     reason: str = Field(description="One likely reason, specific to these posts (quote the hook or detail it rests on)")
     confidence: Literal["high", "medium", "low"] = Field(description="How strongly the numbers given support it")
+    confidence_pct: int | None = Field(default=None, ge=0, le=100, description="Your estimate, 0-100, that this reason really explains the difference")
 
 class CompareExplanation(BaseModel):
     summary: str = Field(description="Two or three sentences: which post did better on what, and the most likely reason")
@@ -45,9 +46,9 @@ def compare_posts(account: Account, posts: list[dict], checkpoint: str, typical:
     import anthropic
 
     if not claude.configured():
-        raise claude.AIError("Claude isn't connected yet: add ANTHROPIC_API_KEY to server/.env and restart the backend.")
+        raise claude.not_configured()
     if post_assist_runs_today(account) >= POST_ASSIST_DAILY_LIMIT:
-        raise claude.AIError(f"The limit of {POST_ASSIST_DAILY_LIMIT} AI requests per account in 24 hours has been reached. This protects the budget.")
+        raise claude.AIError(f"Daily limit reached: {POST_ASSIST_DAILY_LIMIT} AI requests per account in 24 hours.")
     blocks = []
     for p in posts:
         caption = p.pop("caption", "") or ""
@@ -75,11 +76,11 @@ def compare_posts(account: Account, posts: list[dict], checkpoint: str, typical:
         if resp.stop_reason == "refusal":
             raise claude.AIError("Claude declined to compare these posts.")
         if resp.stop_reason == "max_tokens" or resp.parsed_output is None:
-            raise claude.AIError("Claude's answer was cut off. Try again, or with fewer posts.")
+            raise claude.AIError("The response was incomplete. Try again with fewer posts.")
     except anthropic.APIError as e:
         run.status, run.error = "error", str(e)[:500]
         run.save(update_fields=["status", "error"])
-        raise claude.AIError("Claude couldn't compare the posts right now. Try again shortly.")
+        raise claude.AIError("The comparison could not be completed. Try again shortly.")
     except claude.AIError as e:
         run.status, run.error = "error", str(e)
         run.save(update_fields=["status", "error"])

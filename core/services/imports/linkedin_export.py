@@ -75,7 +75,7 @@ def read_workbook(data: bytes) -> dict[str, list[list[Any]]]:
         try:
             book = xlrd.open_workbook(file_contents=data)
         except Exception as e:  # xlrd raises several unrelated types
-            raise ExportError(f"Couldn't read this .xls file ({e})") from e
+            raise ExportError(f"The .xls file could not be read ({e})") from e
         out = {}
         for sh in book.sheets():
             rows = []
@@ -95,9 +95,9 @@ def read_workbook(data: bytes) -> dict[str, list[list[Any]]]:
         try:
             wb = openpyxl.load_workbook(io.BytesIO(data), read_only=True, data_only=True)
         except Exception as e:
-            raise ExportError(f"Couldn't read this .xlsx file ({e})") from e
+            raise ExportError(f"The .xlsx file could not be read ({e})") from e
         return {ws.title: [list(r) for r in ws.iter_rows(values_only=True)] for ws in wb.worksheets}
-    raise ExportError("Not an Excel file. Upload the .xls or .xlsx file exactly as LinkedIn exported it.")
+    raise ExportError("Unsupported file. Upload the .xls or .xlsx file as exported from LinkedIn.")
 
 
 def detect_kind(sheets: dict[str, list[list[Any]]]) -> str:
@@ -110,7 +110,7 @@ def detect_kind(sheets: dict[str, list[list[Any]]]) -> str:
         return "visitors"
     if "COMPETITORS" in names or any("competitor" in n.lower() for n in names):
         return "competitors"
-    raise ExportError(f"Not a LinkedIn page export this app knows (sheets: {', '.join(sorted(names))})")
+    raise ExportError(f"Unrecognised LinkedIn export (sheets: {', '.join(sorted(names))})")
 
 
 def _table(rows: list[list[Any]], first_col: str) -> list[dict[str, Any]]:
@@ -125,7 +125,7 @@ def _table(rows: list[list[Any]], first_col: str) -> list[dict[str, Any]]:
                     continue
                 out.append({header[j]: (r[j] if j < len(r) else None) for j in range(len(header)) if header[j]})
             return out
-    raise ExportError(f"Couldn't find the header row (expected a column called '{first_col}')")
+    raise ExportError(f"Header row not found (expected a column named '{first_col}')")
 
 
 def _date(v: Any) -> date:
@@ -139,7 +139,7 @@ def _date(v: Any) -> date:
             return datetime.strptime(s, fmt).date()
         except ValueError:
             pass
-    raise ExportError(f"Unrecognised date '{s}'")
+    raise ExportError(f"Unrecognised date: {s}")
 
 
 def _int(v: Any) -> int | None:

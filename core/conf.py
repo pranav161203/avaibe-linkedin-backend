@@ -51,6 +51,35 @@ def read_only_without_signin() -> bool:
     return os.getenv("READ_ONLY_WITHOUT_SIGNIN", "").strip().lower() in ("1", "true", "yes")
 
 
-def auth_enabled() -> bool:
+def microsoft_configured() -> bool:
     # Read live so tests can switch it per run
     return bool(os.getenv("MS_TENANT_ID") and os.getenv("MS_CLIENT_ID") and os.getenv("MS_CLIENT_SECRET"))
+
+
+def auth_enabled() -> bool:
+    """Sign-in is on when AUTH_ENABLED=true or Microsoft sign-in is configured. Off = local mode (no sign-in)."""
+    flag = os.getenv("AUTH_ENABLED", "").strip().lower() in ("1", "true", "yes")
+    return flag or microsoft_configured()
+
+
+# ---- Sign-in tokens (see docs/auth.md)
+# Access token: a signed JWT that proves who is asking. Short-lived, never stored.
+ACCESS_TOKEN_MINUTES = int(os.getenv("ACCESS_TOKEN_MINUTES", "15"))
+# Refresh token: renews the access token; rotated on every use. A session ends after this many days at most.
+REFRESH_TOKEN_DAYS = int(os.getenv("REFRESH_TOKEN_DAYS", "7"))
+INVITATION_DAYS = int(os.getenv("INVITATION_DAYS", "7"))
+# Password sign-in: after this many wrong passwords for one email in the window, wait until the window passes
+LOGIN_MAX_FAILURES = int(os.getenv("LOGIN_MAX_FAILURES", "5"))
+LOGIN_LOCK_MINUTES = int(os.getenv("LOGIN_LOCK_MINUTES", "15"))
+
+
+def jwt_signing_key() -> str:
+    """JWT_SIGNING_KEY if set; otherwise a key derived from DJANGO_SECRET_KEY (so it's never the secret itself).
+    Changing it signs everyone out within ACCESS_TOKEN_MINUTES."""
+    key = os.getenv("JWT_SIGNING_KEY", "")
+    if key:
+        return key
+    import hashlib
+    import hmac
+
+    return hmac.new(settings.SECRET_KEY.encode(), b"avaibe-jwt-access-v1", hashlib.sha256).hexdigest()

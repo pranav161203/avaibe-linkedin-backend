@@ -11,7 +11,7 @@ CHECKPOINT_CHOICES = [(c, c) for c in CHECKPOINT_HOURS]
 
 # Each includes the rights of the ones before it. Super admins also manage admins and other super admins.
 ROLES = ["viewer", "editor", "admin", "superadmin"]
-ROLE_LABELS = {"viewer": "Viewer", "editor": "Editor", "admin": "Admin", "superadmin": "Super admin"}
+ROLE_LABELS = {"viewer": "Viewer", "editor": "Editor", "admin": "Admin", "superadmin": "Owner"}
 ROLE_CHOICES = [(r, ROLE_LABELS[r]) for r in ROLES]
 
 PLANNED_STATUSES = ["draft", "approved", "publishing", "published", "failed", "missed"]

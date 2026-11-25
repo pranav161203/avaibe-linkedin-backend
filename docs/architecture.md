@@ -24,8 +24,9 @@ core/
     errors.py               ApiError, fail(status, detail), the {"detail": ...} error format
     params.py               parse(Schema, body), int_param(), choice_param()
   auth/                     Who is asking and what they may do
-    authentication.py       Session sign-in (DRF authentication), local mode, read-only demo
-    permissions.py          require(user, role), check_account(), allowed_account_ids()
+    authentication.py       Access-token cookie (DRF authentication), local mode, read-only demo
+    cookies.py              The access and refresh cookies
+    permissions.py          require(user, role), check_account(), allowed_account_ids() (company-scoped)
     microsoft.py            Microsoft Entra ID (MSAL) client
   models/<area>.py          Database models, one file per area; all re-exported from core/models/__init__.py
   schemas/<area>.py         Request bodies (Pydantic): what the API accepts
@@ -35,6 +36,7 @@ core/
                             similar posts, rule-based suggestions
     ai/                     Claude features: ideas, post_assist, chat, research, compare, usage, shared context
     imports/                LinkedIn export files, CSV import, Excel plan import
+    auth/                   Passwords, tokens, sign-in, invitations, companies (see docs/auth.md)
     publishing.py           Publishing approved posts to LinkedIn (used by the scheduler and "Publish now")
     linkedin_sync.py        Pulling data from LinkedIn's Community Management API into the tables
     calendar.py             Content calendar (posts and timing advice per date)

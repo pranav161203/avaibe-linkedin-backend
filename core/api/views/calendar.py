@@ -27,9 +27,9 @@ def calendar(request):
         start = date.fromisoformat(request.query_params["from"])
         end = date.fromisoformat(request.query_params["to"])
     except (KeyError, ValueError):
-        fail(422, "'from' and 'to' are required, as dates like 2026-11-01")
+        fail(422, "Start and end dates are required, in YYYY-MM-DD format")
     if start > end or (end - start).days > MAX_DAYS:
-        fail(422, f"'from' must be before 'to', at most {MAX_DAYS} days apart")
+        fail(422, f"The start date must precede the end date by no more than {MAX_DAYS} days")
 
     account = Account.objects.get(id=account_id)
     allowed = set(allowed_account_ids(request.user))
@@ -83,7 +83,7 @@ def calendar_items(request):
         start = date.fromisoformat(request.query_params["from"])
         end = date.fromisoformat(request.query_params["to"])
     except (KeyError, ValueError):
-        fail(422, "'from' and 'to' are required, as dates like 2026-11-01")
+        fail(422, "Start and end dates are required, in YYYY-MM-DD format")
     if start > end or (end - start).days > MAX_ITEM_DAYS:
-        fail(422, f"'from' must be before 'to', at most {MAX_ITEM_DAYS} days apart")
+        fail(422, f"The start date must precede the end date by no more than {MAX_ITEM_DAYS} days")
     return Response({"from": start.isoformat(), "to": end.isoformat(), "items": calendar_data.items_between(start, end)})

@@ -14,6 +14,8 @@ class AccountIn(BaseModel):
     kind: AccountKind
     linkedin_url: str | None = Field(default=None, max_length=500)
     is_test: bool = False
+    # Super admins only: which company it belongs to (company admins always add to their own)
+    company_id: int | None = None
 
 class AccountOut(AccountIn):
     model_config = ConfigDict(from_attributes=True)

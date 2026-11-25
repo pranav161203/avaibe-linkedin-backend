@@ -32,7 +32,15 @@ RATE_LIMITED = "Claude's usage limit was reached. Try again in a minute."
 
 
 class AIError(Exception):
-    """Shown to the user as-is."""
+    """Shown to the user as-is. `owner_detail` names the setting to fix: only owners see it (core.auth.permissions.for_viewer)."""
+
+    def __init__(self, message: str, owner_detail: str | None = None):
+        super().__init__(message)
+        self.owner_detail = owner_detail
+
+
+def not_configured() -> AIError:
+    return AIError("Claude is not configured. Contact the platform owner.", owner_detail="Claude is not configured. Set ANTHROPIC_API_KEY on the server.")
 
 
 def configured() -> bool:
@@ -54,9 +62,15 @@ def api_errors(rate_limited: str = RATE_LIMITED, bad_request: str = "Claude reje
     try:
         yield
     except anthropic.AuthenticationError:
-        raise AIError("The Anthropic API key was rejected. Check ANTHROPIC_API_KEY in server/.env.")
+        raise AIError(
+            "The AI service is unavailable due to a configuration issue. Contact the platform owner.",
+            owner_detail="The Anthropic API key was rejected. Check ANTHROPIC_API_KEY on the server.",
+        )
     except anthropic.PermissionDeniedError:
-        raise AIError("The API key doesn't have permission for this model.")
+        raise AIError(
+            "The AI service is unavailable due to a configuration issue. Contact the platform owner.",
+            owner_detail="The Anthropic API key does not have access to the configured model (CLAUDE_MODEL).",
+        )
     except anthropic.RateLimitError:
         raise AIError(rate_limited)
     except anthropic.BadRequestError as e:

@@ -35,7 +35,7 @@ class PostAssistTests(TestCase):
         with mock.patch("core.auth.authentication.auth_enabled", return_value=False), mock.patch("core.integrations.claude.configured", return_value=False):
             res = self.client.post("/api/ai/post-assist", {"account_id": self.acc.id, "format": "text", "caption": "Hi"}, format="json")
             self.assertEqual(res.status_code, 400)
-            self.assertIn("isn't connected", res.json()["detail"] if "detail" in res.json() else res.content.decode())
+            self.assertIn("is not configured", res.json()["detail"] if "detail" in res.json() else res.content.decode())
 
     def test_analyse_records_the_run_and_wraps_the_draft(self):
         from core.models import AIRun
@@ -123,7 +123,7 @@ class PostAssistTests(TestCase):
             video = SimpleUploadedFile("v.mp4", b"0000", content_type="video/mp4")
             res = self.client.post("/api/ai/post-assist", {"account_id": self.acc.id, "format": "video", "caption": "Hi", "attachment": video}, format="multipart")
             self.assertEqual(res.status_code, 400)
-            self.assertIn("Videos can't be read", res.content.decode())
+            self.assertIn("Video is not supported", res.content.decode())
 
 
     def test_web_search_runs_first_and_its_brief_and_sources_come_back(self):

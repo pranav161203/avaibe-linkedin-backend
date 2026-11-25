@@ -70,7 +70,7 @@ def import_linkedin_export(request):
     check_account(user, account_id)
     uploads = request.FILES.getlist("files")
     if not uploads:
-        fail(422, "Attach at least one exported file")
+        fail(422, "Attach at least one export file")
     # Every export this importer reads comes from a company page; into a profile only when someone confirms it
     if account.kind != "company" and str(request.data.get("confirm_profile", "")).lower() not in {"1", "true", "yes"}:
         fail(
@@ -83,7 +83,7 @@ def import_linkedin_export(request):
         try:
             exported_on = date.fromisoformat(str(request.data["exported_on"]))
         except ValueError:
-            fail(422, "exported_on must be a date (YYYY-MM-DD)")
+            fail(422, "Export date must be in YYYY-MM-DD format")
     results = []
     for f in uploads:
         if f.size > 20 * 1024 * 1024:
@@ -126,7 +126,7 @@ def import_csv(request):
             )
     missing = {"published_at_uae", "format"} - headers
     if missing:
-        fail(400, f"Missing required columns: {sorted(missing)}")
+        fail(400, f"Missing required columns: {', '.join(sorted(missing))}")
 
     created = updated = snapshots = 0
     errors: list[dict] = []

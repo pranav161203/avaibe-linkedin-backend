@@ -52,6 +52,7 @@ class TrendIdea(BaseModel):
     use_by: str = Field(description="Date after which the idea feels late, YYYY-MM-DD")
     risks: list[str] = Field(description="What could go wrong (conflicting sources, sensitivity, vendor bias); empty if none")
     confidence: Literal["high", "medium", "low"] = Field(description="How well the sources support the trend")
+    confidence_pct: int | None = Field(default=None, ge=0, le=100, description="Your estimate, 0-100, of how well the sources support the trend")
     sources: list[TrendSource] = Field(description="1-3 sources from the research list that this idea rests on")
 
 
@@ -148,7 +149,7 @@ def research_trends(account: Account) -> tuple[str, list[dict], int, int, int]:
                     sources.setdefault(url, getattr(r, "title", None) or url)
     brief = "".join(parts).strip()
     if not brief:
-        raise claude.AIError("The web search found nothing useful this time. Try again later.")
+        raise claude.AIError("The web search returned no relevant results. Try again later.")
     return brief, [{"title": t, "url": u} for u, t in sources.items()], tin, tout, searches
 
 
@@ -177,19 +178,19 @@ def call_ideas(prompt: str) -> tuple[TrendsResult, int, int]:
     if resp.stop_reason == "refusal":
         raise claude.AIError("Claude declined this request.")
     if resp.stop_reason == "max_tokens" or resp.parsed_output is None:
-        raise claude.AIError("Claude's answer was cut off. Try again.")
+        raise claude.AIError("The response was incomplete. Try again.")
     return resp.parsed_output, claude.billed_input_tokens(resp.usage), resp.usage.output_tokens
 
 
 def find_trends(account: Account, user_email: str | None) -> AIRun:
     if not claude.configured():
-        raise claude.AIError("Claude isn't connected yet: add ANTHROPIC_API_KEY to server/.env and restart the backend.")
+        raise claude.not_configured()
     with transaction.atomic():
         Account.objects.select_for_update().filter(id=account.id).first()
         if running(account):
-            raise claude.AIError("Claude is already looking for trends for this account. They'll appear here shortly.")
+            raise claude.AIError("A trend search is already running for this account. Results will appear shortly.")
         if runs_today(account) >= DAILY_LIMIT:
-            raise claude.AIError(f"The limit of {DAILY_LIMIT} trend searches per account in 24 hours has been reached. This protects the budget.")
+            raise claude.AIError(f"Daily limit reached: {DAILY_LIMIT} trend searches per account in 24 hours.")
         run = AIRun.objects.create(account=account, kind="trends", status="running", model=CLAUDE_MODEL, created_by=user_email)
     try:
         brief, sources, tin1, tout1, searches = research_trends(account)
